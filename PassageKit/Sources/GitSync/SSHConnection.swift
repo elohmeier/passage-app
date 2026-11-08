@@ -26,7 +26,7 @@ final class SSHConnection: @unchecked Sendable {
     ) throws(SSHFailure) -> SSHConnection {
         let failure = FailureBox()
         let group = NIOTSEventLoopGroup.singleton
-        let authenticated = group.any().makePromise(of: Void.self)
+        let authenticated = OutcomeBox<Void>()
         let bootstrap = NIOTSConnectionBootstrap(group: group)
             .connectTimeout(timeout)
             .channelInitializer { channel in
@@ -39,21 +39,34 @@ final class SSHConnection: @unchecked Sendable {
                     try channel.pipeline.syncOperations.addHandlers(handler, AuthWatcher(promise: authenticated, failure: failure))
                 }
             }
+        // Fail fast instead of letting Network.framework wait for connectivity (it would keep a
+        // dropped connection "waiting" forever, e.g. right after the device wakes up), and
+        // enforce our own deadline on top of NIO's connect timeout.
+        let connecting = bootstrap.channelOption(NIOTSChannelOptions.waitForActivity, value: false)
+            .connect(host: host, port: port)
+        let outcome = OutcomeBox<Channel>()
+        connecting.whenComplete { outcome.set($0) }
+        guard let result = outcome.wait(timeout: timeout) else {
+            connecting.whenSuccess { $0.close(promise: nil) }
+            throw .timeout
+        }
         let channel: Channel
         do {
-            channel = try bootstrap.connect(host: host, port: port).wait()
+            channel = try result.get()
         } catch {
-            authenticated.fail(SSHFailure.connection("\(error)"))
-            throw .connection("\(host):\(port): \(error)")
+            throw failure.value ?? .connection("\(host):\(port): \(error)")
         }
-        // Guard against servers that never finish the handshake.
-        let timeoutTask = channel.eventLoop.scheduleTask(in: timeout) { channel.close(promise: nil) }
-        do {
-            try authenticated.futureResult.wait()
-            timeoutTask.cancel()
-        } catch {
+        // Done when authentication succeeds, the connection closes, or the deadline passes,
+        // whichever comes first. (A close before the SSH handshake isn't forwarded past
+        // NIOSSHHandler, so the close future is watched directly.)
+        channel.closeFuture.whenComplete { _ in authenticated.set(.failure(failure.value ?? .connection("connection closed"))) }
+        guard let auth = authenticated.wait(timeout: timeout) else {
             channel.close(promise: nil)
-            throw failure.value ?? (error as? SSHFailure) ?? .timeout
+            throw failure.value ?? .timeout
+        }
+        if case .failure(let error) = auth {
+            channel.close(promise: nil)
+            throw failure.value ?? (error as? SSHFailure) ?? .connection("\(error)")
         }
         return SSHConnection(channel: channel, failure: failure)
     }
@@ -100,20 +113,16 @@ final class SSHConnection: @unchecked Sendable {
     /// errors or closes first.
     private final class AuthWatcher: ChannelInboundHandler {
         typealias InboundIn = Any
-        let promise: EventLoopPromise<Void>
+        let promise: OutcomeBox<Void>
         let failure: FailureBox
-        var done = false
 
-        init(promise: EventLoopPromise<Void>, failure: FailureBox) {
+        init(promise: OutcomeBox<Void>, failure: FailureBox) {
             self.promise = promise
             self.failure = failure
         }
 
         func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
-            if event is UserAuthSuccessEvent, !done {
-                done = true
-                promise.succeed(())
-            }
+            if event is UserAuthSuccessEvent { promise.set(.success(())) }
             context.fireUserInboundEventTriggered(event)
         }
 
@@ -128,9 +137,28 @@ final class SSHConnection: @unchecked Sendable {
         }
 
         private func finish(_ error: SSHFailure) {
-            guard !done else { return }
-            done = true
-            promise.fail(error)
+            promise.set(.failure(error))
+        }
+    }
+
+    /// The first result delivered, waited for with a deadline.
+    private final class OutcomeBox<T>: @unchecked Sendable {
+        private let condition = NSCondition()
+        private var result: Result<T, any Error>?
+
+        func set(_ r: Result<T, any Error>) {
+            condition.withLock {
+                if result == nil { result = r }
+                condition.broadcast()
+            }
+        }
+
+        func wait(timeout: TimeAmount) -> Result<T, any Error>? {
+            let deadline = Date.now.addingTimeInterval(Double(timeout.nanoseconds) / 1e9)
+            return condition.withLock {
+                while result == nil, condition.wait(until: deadline) {}
+                return result
+            }
         }
     }
 

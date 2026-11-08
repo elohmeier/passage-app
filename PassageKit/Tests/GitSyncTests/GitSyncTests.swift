@@ -342,3 +342,41 @@ extension SSHTransportTests {
         #expect(FileManager.default.fileExists(atPath: fx.work.appending(path: "ssh.age").path))
     }
 }
+
+/// A TCP server that accepts and immediately closes, like a network that drops right after
+/// the phone wakes up.
+@Test func droppedConnectionIsATransientNetworkError() async throws {
+    let listener = try Socket.listenOnce()
+    let dir = FileManager.default.temporaryDirectory.appending(path: "drop-\(UUID().uuidString)")
+    do {
+        _ = try await GitRepo.clone(remote: "ssh://git@127.0.0.1:\(listener.port)/x.git", into: dir, credentials: .ssh(username: nil, key: .generateEd25519()))
+        Issue.record("expected failure")
+    } catch {
+        #expect(error.isTransient)
+        #expect(error.localizedDescription.hasPrefix("Couldn't reach the server."))
+        #expect(!error.localizedDescription.contains("connection("), "no enum dumps in messages")
+    }
+}
+
+enum Socket {
+    /// Accepts connections on a free port and closes them right away, on a background thread.
+    static func listenOnce() throws -> (port: Int, fd: Int32) {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        addr.sin_port = 0
+        _ = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+        listen(fd, 4)
+        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        _ = withUnsafeMutablePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &len) } }
+        Thread {
+            while true {
+                let client = accept(fd, nil, nil)
+                if client < 0 { return }
+                close(client)
+            }
+        }.start()
+        return (Int(UInt16(bigEndian: addr.sin_port)), fd)
+    }
+}

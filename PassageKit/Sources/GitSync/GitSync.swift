@@ -35,12 +35,16 @@ public struct GitError: Error, LocalizedError, Equatable, Sendable {
     public let message: String
     public let code: Int32
 
+    /// Worth retrying automatically: the network dropped or wasn't up yet.
+    public var isTransient: Bool { kind == .network }
+
     public var errorDescription: String? {
         switch kind {
         case .authentication: "Authentication failed: \(message)"
         case .diverged: "Your local copy and the remote have both changed. Merging comes in a later version."
         case .uncommittedChanges: "The local copy has changes that would be overwritten."
         case .pushRejected: "The server rejected the push: \(message)"
+        case .network: "Couldn't reach the server. \(message)"
         case .unknownHostKey(let key): "The authenticity of \(key.host) can't be established. Its \(key.algorithm) key fingerprint is \(key.fingerprint)."
         case .hostKeyChanged(let key):
             "The host key of \(key.host) has changed (now \(key.fingerprint)). Someone could be intercepting the connection, or the server was re-keyed."

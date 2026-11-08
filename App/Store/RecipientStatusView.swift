@@ -53,3 +53,32 @@ struct RecipientStatusSection: View {
         }
     }
 }
+
+/// A quiet status row when the last sync failed (e.g. offline), with a retry.
+struct SyncStatusSection: View {
+    @Environment(StoreModel.self) private var store
+
+    var body: some View {
+        if let problem = store.syncProblem {
+            Section {
+                HStack(alignment: .firstTextBaseline) {
+                    Label {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Couldn't sync").font(.subheadline.bold())
+                            Text(problem).font(.caption).foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "icloud.slash").foregroundStyle(.orange)
+                    }
+                    Spacer()
+                    if store.isSyncing {
+                        ProgressView()
+                    } else {
+                        Button("Retry") { Task { await store.sync() } }
+                            .buttonStyle(.borderless)
+                    }
+                }
+            }
+        }
+    }
+}

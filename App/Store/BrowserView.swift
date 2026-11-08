@@ -1,3 +1,4 @@
+import KeyStore
 import PassStore
 import SwiftUI
 
@@ -5,6 +6,7 @@ enum Route: Hashable {
     case folder(String)
     case entry(EntryPath)
     case keys
+    case identity(StoredIdentity)
     case settings
     case decryptFile
 }
@@ -54,6 +56,7 @@ struct BrowserView: View {
                 case .folder(let f): FolderView(folder: f)
                 case .entry(let e): EntryView(entry: e)
                 case .keys: KeysView()
+                case .identity(let identity): IdentityDetailView(identity: identity)
                 case .settings: SettingsView()
                 case .decryptFile: DecryptFileView()
                 }
@@ -76,8 +79,7 @@ struct BrowserView: View {
             case "new": debugEditor = .new(folder: arg)
             case "autofill": debugAutoFill = arg
             case "identity":
-                path.append(Route.keys)
-                if let device = model.deviceIdentity { path.append(device) }
+                if let device = model.deviceIdentity { path.append(Route.identity(device)) }
             case "settings": path.append(Route.settings)
             default: break
             }
@@ -97,7 +99,10 @@ struct FolderView: View {
     var body: some View {
         let contents = store.snapshot.contents(of: folder)
         List {
-            if folder.isEmpty { RecipientStatusSection() }
+            if folder.isEmpty {
+                SyncStatusSection()
+                RecipientStatusSection()
+            }
             ForEach(contents.folders, id: \.self) { f in
                 NavigationLink(value: Route.folder(f)) {
                     Label(EntryPath(f).name, systemImage: "folder")

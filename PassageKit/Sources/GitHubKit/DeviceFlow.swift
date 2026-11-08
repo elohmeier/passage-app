@@ -3,6 +3,27 @@ import os
 
 let log = Logger(subsystem: "de.nerdworks.passage", category: "GitHub")
 
+extension URLError {
+    /// Errors from a dropped or not-yet-available connection, worth retrying. Typical after the
+    /// app was suspended (iOS closes idle sockets, and URLSession doesn't retry POSTs).
+    var isTransient: Bool {
+        [.networkConnectionLost, .notConnectedToInternet, .timedOut, .cannotConnectToHost, .dnsLookupFailed, .cannotFindHost,
+         .secureConnectionFailed]
+            .contains(code)
+    }
+}
+
+/// Runs `body`, retrying once after a short pause if it fails with a transient network error.
+func retryingTransient<T>(_ body: () async throws -> T) async throws -> T {
+    do {
+        return try await body()
+    } catch let error as URLError where error.isTransient {
+        log.info("retrying after transient error \(error.code.rawValue, privacy: .public)")
+        try await Task.sleep(for: .seconds(1))
+        return try await body()
+    }
+}
+
 extension URLSession {
     /// No cache, no cookies, nothing on disk. URLSession.shared would cache responses (GitHub
     /// sends ETags even for the token endpoint, so polls were answered from cache) and could
@@ -12,6 +33,10 @@ extension URLSession {
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         config.httpCookieStorage = nil
+        // Wait for the network (e.g. right after returning from Safari or waking up) instead
+        // of failing immediately.
+        config.waitsForConnectivity = true
+        config.timeoutIntervalForResource = 60
         return URLSession(configuration: config)
     }()
 }
@@ -76,7 +101,7 @@ public struct DeviceFlow: Sendable {
 
     public func requestCode() async throws -> Code {
         // Errors such as device_flow_disabled arrive as 200 responses with an "error" field.
-        let data = try await post("https://github.com/login/device/code", ["client_id": clientID])
+        let data = try await retryingTransient { try await post("https://github.com/login/device/code", ["client_id": clientID]) }
         if let error = try? JSONDecoder().decode(TokenResponse.self, from: data), let code = error.error {
             throw code == "device_flow_disabled" ? GitHubError.deviceFlowDisabled : GitHubError.unexpected(error.errorDescription ?? code)
         }
@@ -89,9 +114,17 @@ public struct DeviceFlow: Sendable {
         let deadline = ContinuousClock.now + .seconds(code.expiresIn)
         while ContinuousClock.now < deadline {
             try await sleep(.seconds(interval))
-            let response = try decode(TokenResponse.self, try await post(
-                "https://github.com/login/oauth/access_token",
-                ["client_id": clientID, "device_code": code.deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"]))
+            let data: Data
+            do {
+                data = try await post(
+                    "https://github.com/login/oauth/access_token",
+                    ["client_id": clientID, "device_code": code.deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"])
+            } catch let error as URLError where error.isTransient {
+                // The user is probably approving in Safari while we're suspended; poll again.
+                log.info("device flow poll: transient error \(error.code.rawValue, privacy: .public)")
+                continue
+            }
+            let response = try decode(TokenResponse.self, data)
             if let token = response.accessToken { return token }
             log.info("device flow poll: \(response.error ?? "no error", privacy: .public)")
             switch response.error {

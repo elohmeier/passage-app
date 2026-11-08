@@ -10,7 +10,7 @@ struct KeysView: View {
         List {
             Section {
                 if let device = model.deviceIdentity {
-                    NavigationLink(value: device) { IdentityRow(identity: device) }
+                    NavigationLink { IdentityDetailView(identity: device) } label: { IdentityRow(identity: device) }
                 } else {
                     Button {
                         model.createDeviceIdentity(name: UIDevice.current.name)
@@ -26,7 +26,7 @@ struct KeysView: View {
 
             Section("Imported") {
                 ForEach(model.identities.filter { $0.kind == .imported }) { identity in
-                    NavigationLink(value: identity) { IdentityRow(identity: identity) }
+                    NavigationLink { IdentityDetailView(identity: identity) } label: { IdentityRow(identity: identity) }
                         .swipeActions {
                             Button("Delete", role: .destructive) { pendingDelete = identity }
                         }
@@ -39,7 +39,6 @@ struct KeysView: View {
             }
         }
         .navigationTitle("Keys")
-        .navigationDestination(for: StoredIdentity.self) { IdentityDetailView(identity: $0) }
         .sheet(isPresented: $showingImport) { ImportIdentityView() }
         .confirmationDialog(
             "Delete \(pendingDelete?.name ?? "")?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),

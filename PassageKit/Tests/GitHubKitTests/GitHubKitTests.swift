@@ -7,6 +7,7 @@ import Testing
 /// Serves canned responses in order per "METHOD path", and records requests.
 final class StubProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var responses: [String: [(Int, String)]] = [:]
+    /// Status 0 simulates "the network connection was lost".
     nonisolated(unsafe) static var requests: [URLRequest] = []
     static let lock = NSLock()
 
@@ -47,6 +48,10 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
             Self.responses[key] = queue.isEmpty ? [next] : queue
             return next
         }
+        if status == 0 {
+            client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+            return
+        }
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
@@ -77,6 +82,20 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
             #expect(bodies.first == "client_id=Iv1.test")
             #expect(bodies.last == "client_id=Iv1.test&device_code=dc&grant_type=urn:ietf:params:oauth:grant-type:device_code")
             #expect(!bodies.contains { $0.contains("secret") })
+        }
+
+        /// After returning from Safari, the first poll often hits a socket iOS closed meanwhile.
+        @Test func lostConnectionWhilePollingIsRetried() async throws {
+            StubProtocol.reset([
+                "POST /login/oauth/access_token": [(0, ""), (200, #"{"error":"authorization_pending"}"#), (0, ""), (200, #"{"access_token":"ghu_ok"}"#)],
+            ])
+            let code = DeviceFlow.Code(deviceCode: "dc", userCode: "X", verificationURI: URL(string: "https://github.com/login/device")!, expiresIn: 900, interval: 5)
+            #expect(try await flow.waitForToken(code) == "ghu_ok")
+        }
+
+        @Test func lostConnectionOnAPICallIsRetriedOnce() async throws {
+            StubProtocol.reset(["GET /user/installations": [(0, ""), (200, #"{"total_count":0,"installations":[]}"#)]])
+            #expect(try await GitHubAPI(token: "t", session: StubProtocol.session()).installations().isEmpty)
         }
 
         @Test func denied() async throws {

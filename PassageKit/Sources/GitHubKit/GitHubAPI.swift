@@ -127,7 +127,7 @@ public struct GitHubAPI: Sendable {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(body)
         }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await retryingTransient { try await session.data(for: request) }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             let message = (try? JSONDecoder().decode(ErrorMessage.self, from: data))?.message ?? String(decoding: data.prefix(200), as: UTF8.self)

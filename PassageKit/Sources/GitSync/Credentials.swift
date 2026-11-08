@@ -54,7 +54,8 @@ final class CallbackContext {
             GitError(kind: status == .mismatch ? .hostKeyChanged(key) : .unknownHostKey(key), message: "host key for \(key.host) is not trusted")
         case .authentication?: GitError(kind: .authentication, message: "the server rejected the SSH key")
         case .remote(let message)?: GitError(kind: .other, message: message)
-        case .timeout?, .connection?: GitError(kind: .network, message: "\(sshFailure!)")
+        case .timeout?: GitError(kind: .network, message: "The server didn't respond in time.")
+        case .connection(let detail)?: GitError(kind: .network, message: "The connection to the server was interrupted (\(detail)).")
         case nil: GitError.last(code)
         }
     }

@@ -1,6 +1,7 @@
 import AgeCrypto
 import Foundation
 import GitSync
+import Network
 import KeyStore
 import Observation
 import PassStore
@@ -87,6 +88,7 @@ final class StoreModel {
         self.secrets = secrets
         knownHosts = defaults.data(forKey: Self.knownHostsKey).flatMap { try? JSONDecoder().decode(KnownHosts.self, from: $0) }
             ?? KnownHosts()
+        startMonitoringNetwork()
     }
 
     // MARK: SSH
@@ -290,23 +292,81 @@ final class StoreModel {
     /// Set after a sync that had to keep both sides of conflicting edits.
     var conflictCopies: [String] = []
 
+    enum SyncTrigger {
+        /// App came to the foreground or the network came back: never interrupts with alerts.
+        case automatic
+        /// Pull to refresh, Sync Now, or saving a change.
+        case user
+    }
+
+    /// Why the last sync failed, shown inline at the top of the store. Nil when fine.
+    private(set) var syncProblem: String?
+    private(set) var lastSynced: Date?
+    private var pendingAutomaticSync = false
+    private var isOnline = true
+    private let pathMonitor = NWPathMonitor()
+
+    /// Lets the app keep running briefly in the background so a sync isn't cut off when the
+    /// device locks. Set by the app (extensions can't use UIApplication).
+    static var beginBackgroundTask: (@MainActor () -> (@MainActor () -> Void))?
+
     /// Pulls and pushes (git), then rescans. Local commits stay if the network fails and go
     /// out with the next sync.
-    func sync() async {
+    func sync(_ trigger: SyncTrigger = .user) async {
         guard let git, let gitConfig else {
             await refresh()
             return
         }
+        if trigger == .automatic && !isOnline {
+            pendingAutomaticSync = true
+            return
+        }
+        guard !isSyncing else { return }
         isSyncing = true
-        defer { isSyncing = false }
-        do {
-            let result = try await git.sync(credentials: storedCredentials(for: gitConfig), knownHosts: knownHosts, author: Self.author)
-            if !result.conflictCopies.isEmpty { conflictCopies = result.conflictCopies }
-            lastCommit = try? await git.headCommit()
-        } catch {
-            errorMessage = error.localizedDescription
+        let endBackgroundTask = Self.beginBackgroundTask?()
+        defer {
+            isSyncing = false
+            endBackgroundTask?()
+        }
+        let credentials = storedCredentials(for: gitConfig)
+        for attempt in 0..<2 {
+            do {
+                let result = try await git.sync(credentials: credentials, knownHosts: knownHosts, author: Self.author)
+                if !result.conflictCopies.isEmpty { conflictCopies = result.conflictCopies }
+                lastCommit = try? await git.headCommit()
+                lastSynced = .now
+                syncProblem = nil
+                break
+            } catch where error.isTransient && attempt == 0 {
+                // Typical right after waking up: the network isn't quite back yet.
+                try? await Task.sleep(for: .seconds(2))
+                continue
+            } catch {
+                syncProblem = error.localizedDescription
+                // Automatic syncs report quietly; things the user asked for get an alert,
+                // except plain connectivity problems, which the inline status covers.
+                if trigger == .user, !error.isTransient {
+                    errorMessage = error.localizedDescription
+                }
+                break
+            }
         }
         await refresh()
+    }
+
+    private func startMonitoringNetwork() {
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor in
+                guard let self else { return }
+                self.isOnline = online
+                if online, self.pendingAutomaticSync {
+                    self.pendingAutomaticSync = false
+                    await self.sync(.automatic)
+                }
+            }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "StoreModel.network"))
     }
 
     // MARK: Writing
@@ -410,6 +470,8 @@ final class StoreModel {
         git = nil
         gitConfig = nil
         lastCommit = nil
+        syncProblem = nil
+        lastSynced = nil
         snapshot = .empty
         if updatesAutoFill { Task { await AutoFillStore.clear() } }
         defaults.removeObject(forKey: Self.bookmarkKey)

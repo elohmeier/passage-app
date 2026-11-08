@@ -4,6 +4,13 @@ import SwiftUI
 
 @main
 struct PassageApp: App {
+    init() {
+        StoreModel.beginBackgroundTask = {
+            let id = UIApplication.shared.beginBackgroundTask(withName: "Sync")
+            return { UIApplication.shared.endBackgroundTask(id) }
+        }
+    }
+
     @State private var model = AppModel.live()
     @State private var store = StoreModel(
         defaults: AppModel.sharedDefaults,
@@ -89,7 +96,7 @@ struct PassageApp: App {
             switch phase {
             case .background: model.lock()
             // Pick up changes from other devices whenever the app comes back.
-            case .active where store.gitConfig != nil: Task { await store.sync() }
+            case .active where store.gitConfig != nil: Task { await store.sync(.automatic) }
             default: break
             }
         }
