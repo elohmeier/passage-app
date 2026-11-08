@@ -1,9 +1,11 @@
+import GitSync
 import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(StoreModel.self) private var store
     @State private var confirmingClose = false
+    @State private var sshKey: String?
 
     var body: some View {
         @Bindable var model = model
@@ -22,6 +24,20 @@ struct SettingsView: View {
                 }
             } footer: {
                 Text("Copied passwords stay on this device only and are removed after this time.")
+            }
+
+            Section {
+                if let sshKey {
+                    LabeledContent("SSH Key") {
+                        Text(sshKey).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                    }
+                    Button("Copy Public Key", systemImage: "doc.on.doc") { UIPasteboard.general.string = sshKey }
+                }
+                NavigationLink("Known Hosts") { KnownHostsView() }
+            } header: {
+                Text("SSH")
+            } footer: {
+                Text("This device's key is in the Secure Enclave. GitHub's host keys are built in.")
             }
 
             if store.store != nil {
@@ -58,8 +74,50 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .task { sshKey = try? store.deviceSSHKey().publicKeyLine(comment: "passage-ios") }
         .confirmationDialog("Close \(store.name)?", isPresented: $confirmingClose, titleVisibility: .visible) {
             Button("Close Store", role: .destructive) { store.close() }
+        }
+    }
+}
+
+struct KnownHostsView: View {
+    @Environment(StoreModel.self) private var store
+
+    var body: some View {
+        List {
+            Section("Trusted") {
+                ForEach(store.knownHosts.keys.sorted { $0.host < $1.host }, id: \.self) { key in
+                    HostKeyRow(key: key)
+                        .swipeActions {
+                            Button("Remove", role: .destructive) { store.forget(key) }
+                        }
+                }
+            }
+            Section {
+                ForEach(KnownHosts.pinned.sorted { $0.key < $1.key }, id: \.self) { HostKeyRow(key: $0) }
+            } header: {
+                Text("Built In")
+            } footer: {
+                Text("From GitHub's published host keys.")
+            }
+        }
+        .overlay {
+            if store.knownHosts.keys.isEmpty && KnownHosts.pinned.isEmpty { ContentUnavailableView("No Known Hosts", systemImage: "server.rack") }
+        }
+        .navigationTitle("Known Hosts")
+    }
+}
+
+private struct HostKeyRow: View {
+    let key: HostKey
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(key.host)
+            Text("\(key.algorithm) \(key.fingerprint)")
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
         }
     }
 }

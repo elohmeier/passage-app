@@ -16,6 +16,7 @@ struct PassageApp: App {
                 .environment(store)
                 .onAppear {
                     #if DEBUG
+                        if UserDefaults.standard.bool(forKey: "PassageReset") { store.close() }
                         // Screenshot/automation hook: `-PassageDemo YES` opens the demo store with an
                         // unprotected key (the Simulator can't answer Face ID prompts unattended).
                         if UserDefaults.standard.bool(forKey: "PassageDemo"), store.store == nil {

@@ -15,6 +15,14 @@ struct ContentView: View {
 
 /// Shown when no store is open.
 struct WelcomeView: View {
+    private var debugCloneURL: String {
+        #if DEBUG
+            UserDefaults.standard.string(forKey: "PassageCloneURL") ?? ""
+        #else
+            ""
+        #endif
+    }
+
     @Environment(AppModel.self) private var model
     @Environment(StoreModel.self) private var store
     @State private var showingPicker = false
@@ -66,7 +74,12 @@ struct WelcomeView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showingClone) { CloneView() }
+            .sheet(isPresented: $showingClone) { CloneView(remote: debugCloneURL) }
+            #if DEBUG
+                .onAppear {
+                    if UserDefaults.standard.string(forKey: "PassageRoute") == "clone" { showingClone = true }
+                }
+            #endif
             .fileImporter(isPresented: $showingPicker, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result { store.open(pickedURL: url) }
             }

@@ -12,6 +12,29 @@ struct GitStoreConfig: Codable, Equatable {
     var remote: String
     var branch: String?
     var username: String
+
+    /// `git@host:path` or `ssh://…`.
+    var usesSSH: Bool { Self.isSSH(remote) }
+
+    static func isSSH(_ remote: String) -> Bool {
+        remote.hasPrefix("ssh://") || remote.hasPrefix("git+ssh://") || remote.hasPrefix("ssh+git://")
+            || (!remote.contains("://") && remote.contains(":") && !remote.hasPrefix("/"))
+    }
+
+    /// For github.com remotes, `owner/repo`.
+    static func gitHubRepository(_ remote: String) -> String? {
+        let path: Substring
+        if let r = remote.range(of: "github.com:") {
+            path = remote[r.upperBound...]
+        } else if let r = remote.range(of: "github.com/") {
+            path = remote[r.upperBound...]
+        } else {
+            return nil
+        }
+        let trimmed = path.hasSuffix(".git") ? path.dropLast(4) : path
+        let parts = trimmed.split(separator: "/")
+        return parts.count == 2 ? parts.joined(separator: "/") : nil
+    }
 }
 
 /// The open password store: a folder picked in the Files app, or a git clone.
@@ -37,6 +60,11 @@ final class StoreModel {
     private static let bookmarkKey = "storeBookmark"
     private static let gitConfigKey = "gitStore"
     private static let gitPasswordKey = "git.password"
+    private static let sshKeyKey = "ssh.key"
+    private static let knownHostsKey = "knownHosts"
+
+    /// Trusted SSH host keys, beyond the pinned ones.
+    private(set) var knownHosts: KnownHosts
 
     var name: String {
         if let gitConfig { return Self.displayName(forRemote: gitConfig.remote) }
@@ -46,6 +74,34 @@ final class StoreModel {
     init(defaults: UserDefaults, secrets: any SecretStore) {
         self.defaults = defaults
         self.secrets = secrets
+        knownHosts = defaults.data(forKey: Self.knownHostsKey).flatMap { try? JSONDecoder().decode(KnownHosts.self, from: $0) }
+            ?? KnownHosts()
+    }
+
+    // MARK: SSH
+
+    /// This device's SSH key, created on first use: in the Secure Enclave where available.
+    func deviceSSHKey() throws -> SSHKey {
+        if let data = try secrets.get(Self.sshKeyKey, context: nil), let key = try? JSONDecoder().decode(SSHKey.self, from: data) {
+            return key
+        }
+        let key = (try? SSHKey.generateSecureEnclave()) ?? .generateEd25519()
+        try secrets.set(try JSONEncoder().encode(key), for: Self.sshKeyKey, accessControl: nil)
+        return key
+    }
+
+    func trust(_ key: HostKey) {
+        knownHosts.trust(key)
+        saveKnownHosts()
+    }
+
+    func forget(_ key: HostKey) {
+        knownHosts.remove(key)
+        saveKnownHosts()
+    }
+
+    private func saveKnownHosts() {
+        defaults.set(try? JSONEncoder().encode(knownHosts), forKey: Self.knownHostsKey)
     }
 
     static var gitStoresRoot: URL {
@@ -112,16 +168,24 @@ final class StoreModel {
         let directory = UUID().uuidString
         let target = Self.gitStoresRoot.appending(path: directory, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: Self.gitStoresRoot, withIntermediateDirectories: true)
-        let credentials: GitCredentials = password.isEmpty ? .none : .userPassword(username: username, password: password)
+        let credentials: GitCredentials = if GitStoreConfig.isSSH(remote) {
+            .ssh(username: username.isEmpty ? nil : username, key: try deviceSSHKey())
+        } else if password.isEmpty {
+            .none
+        } else {
+            .userPassword(username: username, password: password)
+        }
 
         cloneProgress = GitProgress(receivedObjects: 0, totalObjects: 0, receivedBytes: 0)
         defer { cloneProgress = nil }
-        _ = try await GitRepo.clone(remote: remote, into: target, branch: branch, credentials: credentials) { [weak self] progress in
+        _ = try await GitRepo.clone(
+            remote: remote, into: target, branch: branch, credentials: credentials, knownHosts: knownHosts
+        ) { [weak self] progress in
             Task { @MainActor in self?.cloneProgress = progress }
         }
 
         let config = GitStoreConfig(directory: directory, remote: remote, branch: branch, username: username)
-        if !password.isEmpty {
+        if !password.isEmpty && !config.usesSSH {
             try secrets.set(Data(password.utf8), for: Self.gitPasswordKey, accessControl: nil)
         }
         defaults.set(try JSONEncoder().encode(config), forKey: Self.gitConfigKey)
@@ -137,7 +201,7 @@ final class StoreModel {
         isSyncing = true
         defer { isSyncing = false }
         do {
-            _ = try await git.pull(credentials: storedCredentials(for: gitConfig))
+            _ = try await git.pull(credentials: storedCredentials(for: gitConfig), knownHosts: knownHosts)
             lastCommit = try? await git.headCommit()
         } catch {
             errorMessage = error.localizedDescription
@@ -146,6 +210,9 @@ final class StoreModel {
     }
 
     private func storedCredentials(for config: GitStoreConfig) -> GitCredentials {
+        if config.usesSSH, let key = try? deviceSSHKey() {
+            return .ssh(username: config.username.isEmpty ? nil : config.username, key: key)
+        }
         guard let data = try? secrets.get(Self.gitPasswordKey, context: nil) else { return .none }
         return .userPassword(username: config.username, password: String(decoding: data, as: UTF8.self))
     }
