@@ -7,15 +7,18 @@ let package = Package(
     products: [
         .library(name: "AgeCrypto", targets: ["AgeCrypto"]),
         .library(name: "KeyStore", targets: ["KeyStore"]),
+        .library(name: "PassStore", targets: ["PassStore"]),
     ],
     targets: [
         .target(name: "AgeCrypto"),
         .target(name: "KeyStore", dependencies: ["AgeCrypto"]),
+        .target(name: "PassStore", dependencies: ["AgeCrypto"]),
         .testTarget(
             name: "AgeCryptoTests",
             dependencies: ["AgeCrypto"],
             resources: [.copy("testkit")]
         ),
         .testTarget(name: "KeyStoreTests", dependencies: ["KeyStore"]),
+        .testTarget(name: "PassStoreTests", dependencies: ["PassStore"]),
     ]
 )

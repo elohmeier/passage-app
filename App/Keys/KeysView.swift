@@ -7,7 +7,6 @@ struct KeysView: View {
     @State private var pendingDelete: StoredIdentity?
 
     var body: some View {
-        @Bindable var model = model
         List {
             Section {
                 if let device = model.deviceIdentity {
@@ -37,14 +36,6 @@ struct KeysView: View {
                 } label: {
                     Label("Import Key…", systemImage: "square.and.arrow.down")
                 }
-            }
-
-            Section {
-                Picker("Require Face ID", selection: $model.unlockOption) {
-                    ForEach(UnlockOption.allCases) { Text($0.title).tag($0) }
-                }
-            } footer: {
-                Text("How long one authentication keeps your keys unlocked. Leaving the app always locks them.")
             }
         }
         .navigationTitle("Keys")

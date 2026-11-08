@@ -198,7 +198,7 @@ CryptoKit.
 | M0 ✅ | Repo skeleton: Xcode project, `PassageKit` package, justfile, CI (macOS runner, `swift test`, build) | CI green on an empty app |
 | M1 ✅ | `AgeCrypto`: X25519, X-Wing, scrypt, armor, STREAM, plus the tag and piv-p256 stanzas (pulled forward from M2) | All 147 CCTV vectors pass, `age` CLI interop in both directions including `age -r age1tag…` |
 | M2 🟡 | `KeyStore`: SE tagged keys (p256tag, mlkem768p256tag), imported keys, unlock sessions | Encrypt to `age1tagpq` with `age` on a Mac, decrypt on a device |
-| M3 | Read-only app with the Files folder backend: open a store folder, tree, search, entry view, copy, TOTP | Daily use for reading a real passage store from iCloud Drive |
+| M3 🟡 | Read-only app with the Files folder backend: open a store folder, tree, search, entry view, copy, TOTP | Daily use for reading a real passage store from iCloud Drive |
 | M4 | `GitSync`: clone/fetch/merge (read-only), HTTPS + SSH Ed25519, known_hosts | Clone a private GitHub repo over SSH |
 | M5 | Writing: create, edit, move, delete, multi-recipient encryption, commit/push, conflict UI, re-encrypt | Round trip with desktop `passage` including conflicts |
 | M6 | AutoFill extension: bulk identity store, OTP credentials, text insertion | Safari login plus 2FA fill |
@@ -206,7 +206,7 @@ CryptoKit.
 | M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
 
-M2 status: the code is done and tested on the Mac's Secure Enclave; on-device verification is pending the first TestFlight build (checklist below).
+M2/M3 status: the code is done and tested on the Mac (`swift test`, including its Secure Enclave). On-device verification is pending the first TestFlight build (checklist below). No iOS Simulator runtime is installed, so the UI has only been compiled, not run.
 
 v1 = M0 through M9. All three of git, Files folder and YubiKey ship in v1.
 
@@ -223,6 +223,12 @@ Things `swift test` on the Mac can't cover:
 - [ ] Enroll a new appearance in Face ID: `biometryCurrentSet` keys stop working, with a clear error.
 - [ ] Keys survive an app update (keychain access group and App Group are registered correctly).
 - [ ] App switcher shows the privacy cover.
+- [ ] Open a passage store folder in iCloud Drive, and one from another File Provider (e.g. Working Copy). The folder reopens after an app restart.
+- [ ] Entries evicted from iCloud ("Remove Download") download on open.
+- [ ] A change made on the Mac shows up without a manual refresh (NSFilePresenter); pull-to-refresh works.
+- [ ] Copy password → paste in another app works; it's gone after the timeout and doesn't appear on the Mac via Universal Clipboard.
+- [ ] TOTP code matches `oathtool`/another authenticator; the countdown ring advances.
+- [ ] Face ID prompt while opening an entry doesn't cause a re-prompt loop.
 
 ## 10. Risks and open questions
 

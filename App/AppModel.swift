@@ -44,6 +44,11 @@ final class AppModel {
     private(set) var identities: [StoredIdentity] = []
     var errorMessage: String?
 
+    /// Seconds until copied secrets are removed from the clipboard.
+    var clipboardSeconds: Int {
+        didSet { defaults.set(clipboardSeconds, forKey: "clipboardSeconds") }
+    }
+
     var unlockOption: UnlockOption {
         didSet {
             defaults.set(unlockOption.rawValue, forKey: "unlockOption")
@@ -60,6 +65,7 @@ final class AppModel {
         identityStore = IdentityStore(store: secrets)
         sessions = UnlockSessionManager(policy: option.policy)
         unlockOption = option
+        clipboardSeconds = defaults.object(forKey: "clipboardSeconds") as? Int ?? 30
         self.defaults = defaults
         reload()
     }
@@ -67,8 +73,10 @@ final class AppModel {
     static func live() -> AppModel {
         AppModel(
             secrets: KeychainSecretStore(service: AppConfig.keychainService, accessGroup: AppConfig.keychainAccessGroup),
-            defaults: UserDefaults(suiteName: AppConfig.appGroup) ?? .standard)
+            defaults: sharedDefaults)
     }
+
+    static var sharedDefaults: UserDefaults { UserDefaults(suiteName: AppConfig.appGroup) ?? .standard }
 
     static func preview() -> AppModel {
         AppModel(secrets: InMemorySecretStore(), defaults: UserDefaults(suiteName: "preview")!)
