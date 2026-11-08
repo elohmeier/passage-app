@@ -104,7 +104,7 @@ struct FolderView: View {
             }
         }
         .navigationTitle(folder.isEmpty ? store.name : EntryPath(folder).name)
-        .refreshable { await store.refresh() }
+        .refreshable { await store.sync() }
     }
 }
 

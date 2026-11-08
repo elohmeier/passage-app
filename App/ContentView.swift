@@ -1,3 +1,4 @@
+import KeyStore
 import SwiftUI
 
 struct ContentView: View {
@@ -17,6 +18,7 @@ struct WelcomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(StoreModel.self) private var store
     @State private var showingPicker = false
+    @State private var showingClone = false
 
     var body: some View {
         NavigationStack {
@@ -28,7 +30,7 @@ struct WelcomeView: View {
                             .foregroundStyle(.tint)
                         Text("No Password Store")
                             .font(.title2.bold())
-                        Text("Open the folder that contains your passage store, for example in iCloud Drive or another Files location.")
+                        Text("Open the folder that contains your passage store, for example in iCloud Drive, or clone it from a git repository.")
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
                     }
@@ -38,6 +40,7 @@ struct WelcomeView: View {
                 }
                 Section {
                     Button("Open Folder…", systemImage: "folder") { showingPicker = true }
+                    Button("Clone Git Repository…", systemImage: "arrow.triangle.branch") { showingClone = true }
                     Button("Try Demo Store", systemImage: "sparkles") { store.openDemoStore(using: model) }
                 }
                 Section {
@@ -63,6 +66,7 @@ struct WelcomeView: View {
                     }
                 }
             }
+            .sheet(isPresented: $showingClone) { CloneView() }
             .fileImporter(isPresented: $showingPicker, allowedContentTypes: [.folder]) { result in
                 if case .success(let url) = result { store.open(pickedURL: url) }
             }
@@ -73,5 +77,5 @@ struct WelcomeView: View {
 #Preview {
     ContentView()
         .environment(AppModel.preview())
-        .environment(StoreModel(defaults: UserDefaults(suiteName: "preview")!))
+        .environment(StoreModel(defaults: UserDefaults(suiteName: "preview")!, secrets: InMemorySecretStore()))
 }

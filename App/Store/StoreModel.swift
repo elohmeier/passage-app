@@ -1,10 +1,20 @@
 import AgeCrypto
 import Foundation
+import GitSync
 import KeyStore
 import Observation
 import PassStore
 
-/// The open password store: a folder picked in the Files app (git comes in M4).
+/// Where the open store comes from.
+struct GitStoreConfig: Codable, Equatable {
+    /// Directory name under `StoreModel.gitStoresRoot`.
+    var directory: String
+    var remote: String
+    var branch: String?
+    var username: String
+}
+
+/// The open password store: a folder picked in the Files app, or a git clone.
 @MainActor @Observable
 final class StoreModel {
     private(set) var store: LocalStore?
@@ -12,21 +22,49 @@ final class StoreModel {
     private(set) var isLoading = false
     var errorMessage: String?
 
+    // Git
+    private(set) var git: GitRepo?
+    private(set) var gitConfig: GitStoreConfig?
+    private(set) var lastCommit: GitRepo.Commit?
+    private(set) var isSyncing = false
+    private(set) var cloneProgress: GitProgress?
+
     private var access: FolderAccess?
     private var watcher: FolderWatcher?
     private var refreshTask: Task<Void, Never>?
     private let defaults: UserDefaults
+    private let secrets: any SecretStore
     private static let bookmarkKey = "storeBookmark"
+    private static let gitConfigKey = "gitStore"
+    private static let gitPasswordKey = "git.password"
 
-    var name: String { store?.root.lastPathComponent ?? "" }
-
-    init(defaults: UserDefaults) {
-        self.defaults = defaults
+    var name: String {
+        if let gitConfig { return Self.displayName(forRemote: gitConfig.remote) }
+        return store?.root.lastPathComponent ?? ""
     }
 
-    /// Reopens the folder from the last session, if any.
+    init(defaults: UserDefaults, secrets: any SecretStore) {
+        self.defaults = defaults
+        self.secrets = secrets
+    }
+
+    static var gitStoresRoot: URL {
+        (FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConfig.appGroup) ?? .applicationSupportDirectory)
+            .appending(path: "Stores", directoryHint: .isDirectory)
+    }
+
+    /// Reopens the store from the last session, if any.
     func restore() {
-        guard store == nil, let bookmark = defaults.data(forKey: Self.bookmarkKey) else { return }
+        guard store == nil else { return }
+        if let data = defaults.data(forKey: Self.gitConfigKey), let config = try? JSONDecoder().decode(GitStoreConfig.self, from: data) {
+            do {
+                try attachGit(config)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            return
+        }
+        guard let bookmark = defaults.data(forKey: Self.bookmarkKey) else { return }
         do {
             let (access, refreshed) = try FolderAccess.resolve(bookmark: bookmark)
             if let refreshed { defaults.set(refreshed, forKey: Self.bookmarkKey) }
@@ -36,6 +74,8 @@ final class StoreModel {
             defaults.removeObject(forKey: Self.bookmarkKey)
         }
     }
+
+    // MARK: Files folder
 
     func open(pickedURL url: URL) {
         close()
@@ -63,15 +103,92 @@ final class StoreModel {
         }
     }
 
+    // MARK: Git
+
+    /// Clones `remote` into the app's container and opens it. Throws so the clone sheet can
+    /// show the error inline.
+    func clone(remote: String, branch: String?, username: String, password: String) async throws {
+        close()
+        let directory = UUID().uuidString
+        let target = Self.gitStoresRoot.appending(path: directory, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: Self.gitStoresRoot, withIntermediateDirectories: true)
+        let credentials: GitCredentials = password.isEmpty ? .none : .userPassword(username: username, password: password)
+
+        cloneProgress = GitProgress(receivedObjects: 0, totalObjects: 0, receivedBytes: 0)
+        defer { cloneProgress = nil }
+        _ = try await GitRepo.clone(remote: remote, into: target, branch: branch, credentials: credentials) { [weak self] progress in
+            Task { @MainActor in self?.cloneProgress = progress }
+        }
+
+        let config = GitStoreConfig(directory: directory, remote: remote, branch: branch, username: username)
+        if !password.isEmpty {
+            try secrets.set(Data(password.utf8), for: Self.gitPasswordKey, accessControl: nil)
+        }
+        defaults.set(try JSONEncoder().encode(config), forKey: Self.gitConfigKey)
+        try attachGit(config)
+    }
+
+    /// Pulls (git) and rescans.
+    func sync() async {
+        guard let git, let gitConfig else {
+            await refresh()
+            return
+        }
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            _ = try await git.pull(credentials: storedCredentials(for: gitConfig))
+            lastCommit = try? await git.headCommit()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        await refresh()
+    }
+
+    private func storedCredentials(for config: GitStoreConfig) -> GitCredentials {
+        guard let data = try? secrets.get(Self.gitPasswordKey, context: nil) else { return .none }
+        return .userPassword(username: config.username, password: String(decoding: data, as: UTF8.self))
+    }
+
+    private func attachGit(_ config: GitStoreConfig) throws {
+        let root = Self.gitStoresRoot.appending(path: config.directory, directoryHint: .isDirectory)
+        let repo = try GitRepo(opening: root)
+        git = repo
+        gitConfig = config
+        store = LocalStore(root: root)
+        Task {
+            lastCommit = try? await repo.headCommit()
+            await refresh()
+        }
+    }
+
+    /// e.g. `github.com/alice/pass` → `pass`.
+    static func displayName(forRemote remote: String) -> String {
+        let last = remote.split(separator: "/").last.map(String.init) ?? remote
+        return last.hasSuffix(".git") ? String(last.dropLast(4)) : last
+    }
+
+    // MARK: Common
+
+    /// Forgets the store. A git clone lives inside the app and is deleted, together with its
+    /// credentials; a Files folder is left untouched.
     func close() {
         watcher?.stop()
         access?.close()
         refreshTask?.cancel()
+        if let gitConfig {
+            try? FileManager.default.removeItem(at: Self.gitStoresRoot.appending(path: gitConfig.directory))
+            try? secrets.delete(Self.gitPasswordKey)
+        }
         watcher = nil
         access = nil
         store = nil
+        git = nil
+        gitConfig = nil
+        lastCommit = nil
         snapshot = .empty
         defaults.removeObject(forKey: Self.bookmarkKey)
+        defaults.removeObject(forKey: Self.gitConfigKey)
     }
 
     func refresh() async {

@@ -13,11 +13,16 @@ See [PLAN.md](PLAN.md) for the design and milestones.
     MLKEM768-X25519, scrypt (decrypt only), p256tag / mlkem768p256tag (hardware keys),
     piv-p256 (`age1se` / `age1yubikey` recipients), and ASCII armor. Tested against all
     [C2SP/CCTV](https://github.com/C2SP/CCTV/tree/main/age) vectors and the `age` CLI.
+  - `KeyStore`: Secure Enclave identities, imported keys, unlock sessions.
+  - `PassStore`: entry parser, OTP, store scanning and search, Files-folder access.
+  - `GitSync`: libgit2 (vendored upstream, built with SwiftPM): clone, fetch, fast-forward pull.
 - `App/`: the SwiftUI app.
 
 ## Development
 
 Requires Xcode 27 (iOS 26 SDK or later). `age` 1.3+ on `PATH` enables the interop tests.
+libgit2 is a submodule pinned to upstream v1.9.2: clone with `--recursive` or run
+`git submodule update --init`.
 
     just test    # package tests
     just build   # iOS app, simulator, unsigned

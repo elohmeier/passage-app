@@ -1,9 +1,12 @@
+import KeyStore
 import SwiftUI
 
 @main
 struct PassageApp: App {
     @State private var model = AppModel.live()
-    @State private var store = StoreModel(defaults: AppModel.sharedDefaults)
+    @State private var store = StoreModel(
+        defaults: AppModel.sharedDefaults,
+        secrets: KeychainSecretStore(service: AppConfig.keychainService + ".git", accessGroup: AppConfig.keychainAccessGroup))
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -21,6 +24,18 @@ struct PassageApp: App {
                         }
                     #endif
                     store.restore()
+                    #if DEBUG
+                        // `-PassageClone <url>` clones a repository on launch.
+                        if let remote = UserDefaults.standard.string(forKey: "PassageClone"), store.gitConfig?.remote != remote {
+                            Task {
+                                do {
+                                    try await store.clone(remote: remote, branch: nil, username: "", password: "")
+                                } catch {
+                                    store.errorMessage = error.localizedDescription
+                                }
+                            }
+                        }
+                    #endif
                 }
                 // Hide content in the app switcher.
                 .overlay {
@@ -44,8 +59,11 @@ struct PassageApp: App {
                 }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .background {
-                model.lock()
+            switch phase {
+            case .background: model.lock()
+            // Pick up changes from other devices whenever the app comes back.
+            case .active where store.gitConfig != nil: Task { await store.sync() }
+            default: break
             }
         }
     }

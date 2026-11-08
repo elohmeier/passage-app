@@ -141,10 +141,11 @@ CryptoKit.
 ## 6. Git (`GitSync`)
 
 - A Swift `actor` wraps libgit2: clone (shallow is optional), fetch, merge, commit, push, and status/ahead-behind. Progress is reported through `AsyncStream`.
+- **libgit2** is vendored as a submodule at the upstream **v1.9.2** tag and built by our own SwiftPM target (`PassageKit/Package.swift`), not a third-party package. The SwiftPM fork we looked at ships 1.9.0 sources with local changes. Build: Secure Transport HTTPS, sha1dc SHA-1 collision detection, bundled zlib/pcre, no SSH/NTLM code, C sources compiled without Clang modules (a `struct entry` clash with `<search.h>`).
 - **Authentication:**
-  - HTTPS with a token (keychain item with `userPresence`).
+  - HTTPS with a token. Stored in the keychain without a user-presence requirement (`WhenUnlockedThisDeviceOnly`): it only grants access to ciphertext, and requiring Face ID for every sync would be noise.
   - SSH with an Ed25519 key generated on the device (CryptoKit). The app shows the public key to add as a deploy key.
-  - Stretch goal: an SSH key in the Secure Enclave (`ecdsa-sha2-nistp256`) via libgit2's `git_credential_ssh_custom_new` sign callback, so the git credential is hardware-bound too. This depends on how libssh2 is built.
+  - SSH: libgit2's own SSH support either execs `ssh` (impossible on iOS) or needs libssh2 (no CommonCrypto backend, would pull in OpenSSL). Instead, register a custom `ssh` smart subtransport with libgit2 (`git_transport_register`) that runs `git-upload-pack`/`git-receive-pack` over Apple's **swift-nio-ssh**. That supports Ed25519 and Secure Enclave P-256 client keys, so the git credential can be hardware-bound too.
   - Host-key verification uses TOFU (trust on first use), with an editable known_hosts list. passforios skips this check.
 - **Sync** is fetch, then fast-forward or merge, then push.
   - Conflicts are per file. Both sides are decrypted and compared field by field in a SwiftUI sheet. The choices are keep mine, keep theirs, keep both (`name (conflict YYYY-MM-DD).age`), or edit a merge.
@@ -199,12 +200,14 @@ CryptoKit.
 | M1 ✅ | `AgeCrypto`: X25519, X-Wing, scrypt, armor, STREAM, plus the tag and piv-p256 stanzas (pulled forward from M2) | All 147 CCTV vectors pass, `age` CLI interop in both directions including `age -r age1tag…` |
 | M2 🟡 | `KeyStore`: SE tagged keys (p256tag, mlkem768p256tag), imported keys, unlock sessions | Encrypt to `age1tagpq` with `age` on a Mac, decrypt on a device |
 | M3 🟡 | Read-only app with the Files folder backend: open a store folder, tree, search, entry view, copy, TOTP | Daily use for reading a real passage store from iCloud Drive |
-| M4 | `GitSync`: clone/fetch/merge (read-only), HTTPS + SSH Ed25519, known_hosts | Clone a private GitHub repo over SSH |
+| M4 🟡 | `GitSync`: clone/fetch/merge (read-only), HTTPS + SSH Ed25519, known_hosts | Clone a private GitHub repo over SSH |
 | M5 | Writing: create, edit, move, delete, multi-recipient encryption, commit/push, conflict UI, re-encrypt | Round trip with desktop `passage` including conflicts |
 | M6 | AutoFill extension: bulk identity store, OTP credentials, text insertion | Safari login plus 2FA fill |
 | M7 | App Intents, Control Center control, generator presets, recipient health check, polish | — |
 | M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
+
+M4 status: HTTPS clone, fast-forward pull and sync-on-foreground are done and checked end to end in the Simulator (desktop `age` → git → app decrypts). SSH is still open (see §6).
 
 M2/M3 status: the code is done and tested on the Mac (`swift test`, including its Secure Enclave). On-device verification is pending the first TestFlight build (checklist below). The UI is checked in the iOS 27 Simulator (`just screenshot <name> -PassageDemo YES -PassageRoute …`). The Simulator emulates the Secure Enclave, so the real key path runs there too, but with unprotected demo keys because it can't answer Face ID prompts unattended.
 

@@ -14,6 +14,12 @@ public struct GitProgress: Sendable, Equatable {
     public var totalObjects: Int
     public var receivedBytes: Int
 
+    public init(receivedObjects: Int, totalObjects: Int, receivedBytes: Int) {
+        self.receivedObjects = receivedObjects
+        self.totalObjects = totalObjects
+        self.receivedBytes = receivedBytes
+    }
+
     public var fraction: Double { totalObjects == 0 ? 0 : Double(receivedObjects) / Double(totalObjects) }
 }
 
