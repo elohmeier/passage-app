@@ -145,7 +145,7 @@ CryptoKit.
 - **Authentication:**
   - HTTPS with a token. Stored in the keychain without a user-presence requirement (`WhenUnlockedThisDeviceOnly`): it only grants access to ciphertext, and requiring Face ID for every sync would be noise.
   - SSH with an Ed25519 key generated on the device (CryptoKit). The app shows the public key to add as a deploy key.
-  - SSH: libgit2's own SSH support either execs `ssh` (impossible on iOS) or needs libssh2 (no CommonCrypto backend, would pull in OpenSSL). Instead, register a custom `ssh` smart subtransport with libgit2 (`git_transport_register`) that runs `git-upload-pack`/`git-receive-pack` over Apple's **swift-nio-ssh**. That supports Ed25519 and Secure Enclave P-256 client keys, so the git credential can be hardware-bound too.
+  - SSH (implemented): libgit2's own SSH support either execs `ssh` (impossible on iOS) or needs libssh2 (no CommonCrypto backend, would pull in OpenSSL). Instead, register a custom `ssh` smart subtransport with libgit2 (`git_transport_register`) that runs `git-upload-pack`/`git-receive-pack` over Apple's **swift-nio-ssh**. That supports Ed25519 and Secure Enclave P-256 client keys, so the git credential can be hardware-bound too.
   - Host-key verification uses TOFU (trust on first use), with an editable known_hosts list. passforios skips this check.
 - **Sync** is fetch, then fast-forward or merge, then push.
   - Conflicts are per file. Both sides are decrypted and compared field by field in a SwiftUI sheet. The choices are keep mine, keep theirs, keep both (`name (conflict YYYY-MM-DD).age`), or edit a merge.
@@ -234,6 +234,75 @@ Things `swift test` on the Mac can't cover:
 - [ ] Face ID prompt while opening an entry doesn't cause a re-prompt loop.
 - [ ] Clone a GitHub repo over SSH with the device's Secure Enclave key added as a deploy key; pull after a desktop push.
 - [ ] Clone over SSH from a non-GitHub host: the fingerprint prompt appears once, and the host is listed under Known Hosts.
+
+## 12. GitHub: making a GitHub-hosted store effortless
+
+Today the user has to create a token, or copy a public key into GitHub's settings by hand. The goal is: tap "Connect GitHub", approve in the browser, pick the repository, done. After that the app holds **no GitHub credential at all**, only a hardware-bound SSH key that can reach exactly one repository.
+
+### Authentication: a GitHub App with device flow, used only during setup
+
+- **Register a "Passage" GitHub App** (owned by the developer account), not an OAuth App. GitHub Apps have fine-grained permissions, and the user picks which repositories the app may see when installing it.
+  - Repository permissions: *Contents: read & write* (create files for a new store), *Metadata: read* (required), *Administration: write* (to add deploy keys).
+  - Account permission: none. "Repository creation" is only requested in the "create a new store" flow (see G4).
+- **Device flow** (enabled in the app's settings). The web flow supports PKCE but still requires the client secret for the token exchange, and a secret can't be kept in an app binary. Device flow needs only the public client ID:
+  1. `POST https://github.com/login/device/code` returns a user code.
+  2. The app copies the code to the clipboard and opens `github.com/login/device` in an `ASWebAuthenticationSession` (same cookies as Safari, so usually already signed in).
+  3. The app polls `POST https://github.com/login/oauth/access_token` until approved.
+- **The token is short-lived and is never stored.** It lives in memory for the setup screen, then is dropped. User tokens expire after 8 hours anyway, and refreshing needs the client secret, so persisting them would be pointless.
+
+### Setup flow
+
+1. **Connect GitHub** opens the device flow (above). If the app isn't installed for any repository, the next step links to the installation page (`github.com/apps/<app>/installations/new`).
+2. **Pick the repository.** List repos via `GET /user/installations/{id}/repositories`. For each candidate, check whether it looks like a passage store (`GET /repos/{o}/{r}/contents/.age-recipients`) and rank those first. Warn prominently if a repository is **public**: entries are encrypted, but file names (site names, usernames in paths) and history are visible.
+3. **Create a per-store SSH key** in the Secure Enclave. GitHub requires deploy keys to be unique per repository, so the device key from §6 becomes one key per git store.
+4. **Register it as a deploy key**: `POST /repos/{o}/{r}/keys` with title "Passage on <device name>" and `read_only: false`. The key never leaves the Secure Enclave, and its blast radius is one repository.
+5. **Clone over SSH** with GitHub's pinned host keys, so there's no fingerprint prompt.
+6. **Drop the token.** From then on, sync is plain git over SSH with the deploy key. Removing the device later is one click on GitHub ("Deploy keys" lists it by device name), and the app's "Close Store" also offers to delete the deploy key if the user signs in again.
+
+### Getting the device's key into the store
+
+Cloning only gets ciphertext; the device must also become a recipient. With the token still in memory during setup:
+
+- **Commit the device's recipient** to `.age-recipients` via the Contents API (`PUT /repos/{o}/{r}/contents/.age-recipients`), choosing the classic or post-quantum form to match the existing recipients (§4). Commit message: "Add <device name> (Passage) as recipient".
+- **Show the desktop step**: `git pull && passage reencrypt && git push`. This is unavoidable, since only a key that can already decrypt can re-encrypt.
+- **Show progress, not a dead end.** Tag stanzas can be matched against the device key without authentication (§3), so after each sync the store screen shows "12 of 40 entries readable on this device" until the desktop has re-encrypted. Entries not yet readable are greyed out with a short explanation.
+
+### Starting a store from the phone
+
+For users with no store yet:
+
+- **Create a private repository** (`POST /user/repos`; this step asks for *Repository creation* as an extra permission), with a README explaining the layout.
+- **Recovery kit is mandatory**, because a Secure Enclave key can't be backed up:
+  1. Generate a software X25519 (or post-quantum) recovery identity.
+  2. Add it to `.age-recipients`.
+  3. Show the secret key once as a QR code plus text for printing or saving in another password manager.
+  4. Never store it on the device.
+  5. Require the user to confirm by retyping a few characters, like wallet seed phrases.
+- **Desktop instructions** to clone the same repository into `~/.passage/store` and import the recovery key or add a desktop key.
+
+### Staying in sync
+
+- **Cheap change detection.** Before fetching, `GET /repos/{o}/{r}/git/ref/heads/<branch>` returns the remote head; skip the fetch if it equals the local head. This needs a token, though, so only for public repos. For private repos, `git ls-remote` over SSH is the equivalent and almost as cheap: it's what our transport's `*_LS` step already does, so expose it as `GitRepo.remoteHead()`.
+- **`BGAppRefreshTask`** runs that check plus a fetch in the background, so the store is current when the user opens the app or AutoFill. It needs no keys; the deploy key is usable without user presence.
+- **No push notifications.** Webhooks would need a server, which this app deliberately doesn't have.
+
+### Implementation
+
+- New `GitHubKit` module (no dependencies, `URLSession` + `Codable`): device flow, installations/repositories listing, contents read/write, deploy keys create/delete, repository creation. Tested against recorded fixtures; one opt-in live test.
+- `StoreModel`: per-store SSH key, store metadata records the GitHub repository and deploy key ID (for later removal).
+- UI: "Connect GitHub" as the first option on the welcome screen (above "Clone Git Repository…"), a repository picker, and a setup checklist screen (connected → key added → recipient committed → waiting for re-encryption → ready).
+
+### Milestones
+
+| # | Deliverable | Depends on |
+| --- | --- | --- |
+| G1 | GitHub App registration, device flow, repository picker, deploy key + SSH clone, token dropped | M4 (done) |
+| G2 | Per-store SSH keys; "Close Store" removes the deploy key (re-auth) | G1 |
+| G3 | Commit the device recipient, readable-entries progress, desktop instructions | M5 (writes) |
+| G4 | Create a new store from the phone, recovery kit | G3 |
+| G5 | Background refresh with cheap remote-head checks | G1 |
+
+**Open:** the GitHub App has to be registered under your account; it needs a name, a homepage, and device flow enabled. Its client ID is public and goes into the app. App Review: the demo store keeps working without GitHub, so review doesn't depend on a GitHub account.
 
 ## 10. Risks and open questions
 
