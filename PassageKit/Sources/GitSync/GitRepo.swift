@@ -8,7 +8,7 @@ import Foundation
 public actor GitRepo {
     public let url: URL
     private let handle: RepoHandle
-    private var repo: OpaquePointer { handle.pointer }
+    var repo: OpaquePointer { handle.pointer }
 
     public struct Commit: Sendable, Equatable {
         public let id: String

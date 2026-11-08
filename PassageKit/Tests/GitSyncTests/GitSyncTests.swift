@@ -234,3 +234,111 @@ func gitHubSSHHostKeyIsPinned() async throws {
         try await GitRepo.clone(remote: "git@github.com:FiloSottile/passage.git", into: dir, credentials: .ssh(username: nil, key: .generateEd25519()))
     }
 }
+
+@Suite struct GitWriteTests {
+    let fx: Fixture
+    let clone: URL
+    let phone = GitRepo.Signature(name: "Passage on iPhone", email: "passage@iphone.invalid")
+    let date = Date(timeIntervalSince1970: 1_800_000_000)
+
+    init() throws {
+        fx = try Fixture()
+        clone = fx.dir.appending(path: "clone")
+    }
+
+    func write(_ path: String, _ content: String) throws {
+        let url = clone.appending(path: path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(content.utf8).write(to: url)
+    }
+
+    func desktopFile(_ path: String) throws -> String? {
+        try fx.git(["pull", "-q", "origin", "main"], in: fx.work)
+        let url = fx.work.appending(path: path)
+        return FileManager.default.fileExists(atPath: url.path) ? try String(contentsOf: url, encoding: .utf8) : nil
+    }
+
+    @Test func commitAllStagesAddsAndDeletes() async throws {
+        let repo = try await GitRepo.clone(remote: fx.origin.path, into: clone)
+        #expect(try await repo.commitAll(message: "nothing", author: phone) == nil)
+
+        try write("email/alice.age", "new")
+        try FileManager.default.removeItem(at: clone.appending(path: "bank.age"))
+        let id = try await repo.commitAll(message: "Add given password for email/alice to store.", author: phone, date: date)
+        #expect(id?.count == 40)
+        let head = try await repo.headCommit()
+        #expect(head.author == "Passage on iPhone")
+        #expect(head.summary == "Add given password for email/alice to store.")
+        #expect(try fx.git(["status", "--porcelain"], in: clone).isEmpty)
+
+        let result = try await repo.sync(credentials: .none, author: phone)
+        #expect(result == GitRepo.SyncResult(pulled: false, pushed: true))
+        #expect(try desktopFile("email/alice.age") == "new")
+        #expect(try desktopFile("bank.age") == nil)
+    }
+
+    @Test func divergedWithoutConflictMerges() async throws {
+        let repo = try await GitRepo.clone(remote: fx.origin.path, into: clone)
+        try write("phone.age", "from phone")
+        try await repo.commitAll(message: "phone", author: phone)
+        try fx.commit("desktop.age", "from desktop")
+        try fx.push()
+
+        let result = try await repo.sync(credentials: .none, author: phone, date: date)
+        #expect(result.pulled && result.pushed && result.conflictCopies.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: clone.appending(path: "desktop.age").path))
+        #expect(try desktopFile("phone.age") == "from phone")
+        #expect(try await repo.headCommit().summary == "Merge remote changes")
+    }
+
+    @Test func conflictingEditsKeepBothVersions() async throws {
+        let repo = try await GitRepo.clone(remote: fx.origin.path, into: clone)
+        try write("bank.age", "phone version")
+        try await repo.commitAll(message: "phone edit", author: phone)
+        try fx.commit("bank.age", "desktop version")
+        try fx.push()
+
+        let result = try await repo.sync(credentials: .none, author: phone, date: date)
+        let copy = "bank (\(GitRepo.conflictSuffix(date))).age"
+        #expect(result.conflictCopies == [copy])
+        #expect(try String(contentsOf: clone.appending(path: "bank.age"), encoding: .utf8) == "desktop version")
+        #expect(try String(contentsOf: clone.appending(path: copy), encoding: .utf8) == "phone version")
+        #expect(try desktopFile(copy) == "phone version", "the conflict copy is pushed too")
+        #expect(try fx.git(["status", "--porcelain"], in: clone).isEmpty, "no leftover merge state")
+        #expect(!FileManager.default.fileExists(atPath: clone.appending(path: ".git/MERGE_HEAD").path))
+    }
+
+    @Test func deleteVersusEditKeepsTheEdit() async throws {
+        let repo = try await GitRepo.clone(remote: fx.origin.path, into: clone)
+        try write("bank.age", "edited on phone")
+        try await repo.commitAll(message: "phone edit", author: phone)
+        try fx.git(["rm", "-q", "bank.age"], in: fx.work)
+        try fx.git(["-c", "user.name=Desktop", "-c", "user.email=d@example.com", "commit", "-q", "-m", "remove bank"], in: fx.work)
+        try fx.push()
+
+        let result = try await repo.sync(credentials: .none, author: phone, date: date)
+        #expect(result.conflictCopies.isEmpty)
+        #expect(try desktopFile("bank.age") == "edited on phone")
+    }
+
+    @Test func conflictCopyNames() {
+        #expect(GitRepo.conflictCopyPath("a/b/work.age", suffix: "conflict X") == "a/b/work (conflict X).age")
+        #expect(GitRepo.conflictCopyPath(".age-recipients", suffix: "conflict X") == ".age-recipients (conflict X)")
+        #expect(GitRepo.conflictCopyPath("README.md", suffix: "conflict X") == "README.md (conflict X)")
+    }
+}
+
+extension SSHTransportTests {
+    @Test func pushOverSSH() async throws {
+        defer { server.stop() }
+        let hosts = KnownHosts([serverKey])
+        let credentials = GitCredentials.ssh(username: nil, key: key)
+        let repo = try await GitRepo.clone(remote: url, into: clone, credentials: credentials, knownHosts: hosts)
+        try Data("over ssh".utf8).write(to: clone.appending(path: "ssh.age"))
+        try await repo.commitAll(message: "ssh push", author: .init(name: "Phone", email: "p@example.com"))
+        let result = try await repo.sync(credentials: credentials, knownHosts: hosts, author: .init(name: "Phone", email: "p@example.com"))
+        #expect(result.pushed)
+        try fx.git(["pull", "-q", "origin", "main"], in: fx.work)
+        #expect(FileManager.default.fileExists(atPath: fx.work.appending(path: "ssh.age").path))
+    }
+}

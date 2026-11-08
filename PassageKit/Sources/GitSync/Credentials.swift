@@ -34,6 +34,8 @@ final class CallbackContext {
     var cancelled: () -> Bool
     /// Set by the SSH transport so a failure can be reported with its real cause.
     var sshFailure: SSHFailure?
+    /// Set when the server rejects a pushed ref (e.g. not a fast-forward).
+    var pushRejection: String?
 
     init(
         credentials: GitCredentials, knownHosts: KnownHosts = KnownHosts(), progress: (@Sendable (GitProgress) -> Void)?,
@@ -74,6 +76,13 @@ final class CallbackContext {
                 _ = usernameFromURL
                 return GIT_PASSTHROUGH.rawValue
             }
+        }
+        callbacks.push_update_reference = { _, status, payload in
+            if let status {
+                let ctx = Unmanaged<CallbackContext>.fromOpaque(payload!).takeUnretainedValue()
+                ctx.pushRejection = String(cString: status)
+            }
+            return 0
         }
         callbacks.transfer_progress = { stats, payload in
             let ctx = Unmanaged<CallbackContext>.fromOpaque(payload!).takeUnretainedValue()
