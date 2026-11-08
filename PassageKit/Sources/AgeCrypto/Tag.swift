@@ -212,6 +212,15 @@ public struct SoftwareTagKey: TagPrivateKey {
         mlkem = postQuantum ? try MLKEM768.PrivateKey.generate() : nil
     }
 
+    /// Restores a key from `p256RawRepresentation` and (optionally) `mlkemSeed`.
+    public init(p256RawRepresentation: Data, mlkemSeed: Data?) throws {
+        p256 = try P256.KeyAgreement.PrivateKey(rawRepresentation: p256RawRepresentation)
+        mlkem = try mlkemSeed.map { try MLKEM768.PrivateKey(seedRepresentation: $0, publicKey: nil) }
+    }
+
+    public var p256RawRepresentation: Data { p256.rawRepresentation }
+    public var mlkemSeed: Data? { mlkem?.seedRepresentation }
+
     public var p256PublicKey: P256.KeyAgreement.PublicKey { p256.publicKey }
     public var mlkemPublicKey: MLKEM768.PublicKey? { mlkem?.publicKey }
 

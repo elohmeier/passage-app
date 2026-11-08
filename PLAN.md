@@ -197,7 +197,7 @@ CryptoKit.
 | --- | --- | --- |
 | M0 ✅ | Repo skeleton: Xcode project, `PassageKit` package, justfile, CI (macOS runner, `swift test`, build) | CI green on an empty app |
 | M1 ✅ | `AgeCrypto`: X25519, X-Wing, scrypt, armor, STREAM, plus the tag and piv-p256 stanzas (pulled forward from M2) | All 147 CCTV vectors pass, `age` CLI interop in both directions including `age -r age1tag…` |
-| M2 | `KeyStore`: SE tagged keys (p256tag, mlkem768p256tag), imported keys, unlock sessions | Encrypt to `age1tagpq` with `age` on a Mac, decrypt on a device |
+| M2 🟡 | `KeyStore`: SE tagged keys (p256tag, mlkem768p256tag), imported keys, unlock sessions | Encrypt to `age1tagpq` with `age` on a Mac, decrypt on a device |
 | M3 | Read-only app with the Files folder backend: open a store folder, tree, search, entry view, copy, TOTP | Daily use for reading a real passage store from iCloud Drive |
 | M4 | `GitSync`: clone/fetch/merge (read-only), HTTPS + SSH Ed25519, known_hosts | Clone a private GitHub repo over SSH |
 | M5 | Writing: create, edit, move, delete, multi-recipient encryption, commit/push, conflict UI, re-encrypt | Round trip with desktop `passage` including conflicts |
@@ -206,7 +206,23 @@ CryptoKit.
 | M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
 
+M2 status: the code is done and tested on the Mac's Secure Enclave; on-device verification is pending the first TestFlight build (checklist below).
+
 v1 = M0 through M9. All three of git, Files folder and YubiKey ship in v1.
+
+### On-device checklist (next TestFlight build)
+
+Things `swift test` on the Mac can't cover:
+
+- [ ] Create a device key on the iPhone. The QR code is scannable and Copy/Share work.
+- [ ] `age -r <age1tag…> | age -r <age1tagpq…>` on the Mac, open the file via "Decrypt a File": exactly one Face ID prompt, plaintext shown.
+- [ ] Unlock policy: "After 1 Minute" doesn't prompt again within the window, "Every Time" does. Backgrounding the app locks.
+- [ ] A file not encrypted to any of our keys fails without a Face ID prompt.
+- [ ] Cancelling Face ID shows "Authentication was cancelled" and nothing else.
+- [ ] Import an `AGE-SECRET-KEY-1…`, decrypt a file for it (one prompt for the wrapping Secure Enclave key).
+- [ ] Enroll a new appearance in Face ID: `biometryCurrentSet` keys stop working, with a clear error.
+- [ ] Keys survive an app update (keychain access group and App Group are registered correctly).
+- [ ] App switcher shows the privacy cover.
 
 ## 10. Risks and open questions
 
