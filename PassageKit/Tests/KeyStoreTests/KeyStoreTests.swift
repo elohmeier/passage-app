@@ -1,4 +1,5 @@
 import AgeCrypto
+import CoreGraphics
 import CryptoKit
 import Foundation
 import LocalAuthentication
@@ -8,6 +9,13 @@ import Testing
 @testable import KeyStore
 
 let message = Data("hunter2\nusername: alice\n".utf8)
+
+/// Keys that require a passcode can't be created while the Mac's screen is locked
+/// (errSecInteractionNotAllowed), just like on a locked iPhone.
+let screenUnlocked: Bool = {
+    guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return true }
+    return session["CGSSessionScreenIsLocked"] as? Bool != true
+}()
 
 /// Uses the real Secure Enclave (Apple-silicon Macs). `.unprotected` protection avoids Touch ID
 /// prompts; access control itself is only verifiable on a device.
@@ -31,7 +39,8 @@ struct SecureEnclaveIdentityTests {
         }
     }
 
-    @Test func biometryProtectedKeyCanBeCreated() throws {
+    @Test(.enabled(if: screenUnlocked, "needs an unlocked screen"))
+    func biometryProtectedKeyCanBeCreated() throws {
         // Creation doesn't prompt; using the key would.
         let key = try SecureEnclaveTagKey(protection: .biometryCurrentSet)
         #expect(key.mlkemPublicKey != nil)
@@ -198,7 +207,8 @@ struct DecryptTests {
     let secrets = InMemorySecretStore()
     let auth = FakeAuthenticator()
 
-    @Test func promptsOnlyForMatchingIdentities() async throws {
+    @Test(.enabled(if: screenUnlocked, "needs an unlocked screen"))
+    func promptsOnlyForMatchingIdentities() async throws {
         let store = IdentityStore(store: secrets)
         _ = try store.createDeviceIdentity(name: "iPhone", protection: .userPresence)
         // userPresence keys would prompt for real, so only exercise the paths that don't reach the key.

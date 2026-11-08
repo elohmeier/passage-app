@@ -10,6 +10,7 @@
 		AA0000000000000000000201 /* AgeCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000301 /* AgeCrypto */; };
 		AA0000000000000000000202 /* KeyStore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000302 /* KeyStore */; };
 		AA0000000000000000000203 /* PassStore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000303 /* PassStore */; };
+		AA0000000000000000000204 /* GitSync in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000304 /* GitSync */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 				AA0000000000000000000201 /* AgeCrypto in Frameworks */,
 				AA0000000000000000000202 /* KeyStore in Frameworks */,
 				AA0000000000000000000203 /* PassStore in Frameworks */,
+				AA0000000000000000000204 /* GitSync in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,6 +79,7 @@
 				AA0000000000000000000301 /* AgeCrypto */,
 				AA0000000000000000000302 /* KeyStore */,
 				AA0000000000000000000303 /* PassStore */,
+				AA0000000000000000000304 /* GitSync */,
 			);
 			productName = Passage;
 			productReference = AA0000000000000000000101 /* Passage.app */;
@@ -297,6 +300,10 @@
 		AA0000000000000000000303 /* PassStore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = PassStore;
+		};
+		AA0000000000000000000304 /* GitSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GitSync;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

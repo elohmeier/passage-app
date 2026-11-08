@@ -1,0 +1,3 @@
+[submodule "PassageKit/Vendor/libgit2"]
+	path = PassageKit/Vendor/libgit2
+	url = https://github.com/libgit2/libgit2
