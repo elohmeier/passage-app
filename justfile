@@ -22,3 +22,13 @@ update-testkit cctv="~/repos/github.com/C2SP/CCTV":
 # Debug launch args: -PassageDemo YES, -PassageRoute entry:<path>|folder:<path>|search:<q>|keys|identity|settings
 screenshot name *args:
     scripts/sim-screenshot.sh {{name}} {{args}}
+
+# Archive a Release build and upload it to App Store Connect / TestFlight (needs Xcode signed in)
+testflight:
+    rm -rf .build/Passage.xcarchive .build/export
+    xcodebuild -project Passage.xcodeproj -scheme Passage -configuration Release -destination 'generic/platform=iOS' \
+        -archivePath .build/Passage.xcarchive -derivedDataPath .build/xcode-archive archive -allowProvisioningUpdates > .build/archive.log 2>&1 \
+        || (grep -E ": error: " .build/archive.log | sort -u; exit 1)
+    # System PATH: Xcode's export breaks with Homebrew's rsync 3.x ("Copy failed").
+    env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath .build/Passage.xcarchive -exportPath .build/export \
+        -exportOptionsPlist Config/ExportOptions.plist -allowProvisioningUpdates
