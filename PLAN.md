@@ -222,7 +222,8 @@ v1 = M0 through M9. All three of git, Files folder and YubiKey ship in v1.
 - **Distribution: App Store.** Consequences:
   - Export compliance: the app only uses standard algorithms (age = X25519/ML-KEM/ChaCha20-Poly1305), so it qualifies for the exemption. Set `ITSAppUsesNonExemptEncryption = NO` once this is confirmed.
   - Review notes must provide a demo store and a demo identity, because reviewers can't set up git or a desktop key. Ship a "Try with demo store" button in onboarding that generates a local store.
-  - App group, keychain access group and AutoFill capabilities on a paid developer account. Bundle ID prefix still to be decided.
+  - App group, keychain access group and AutoFill capabilities on the paid team `D7DW22G9T5`. Bundle ID `de.nerdworks.passage`; extensions use `de.nerdworks.passage.<name>`, the App Group is `group.de.nerdworks.passage`, and the keychain access group is `D7DW22G9T5.de.nerdworks.passage.shared`.
   - Licensing: adapted code from age-plugin-se (MIT) and the CCTV test vectors (CC0) need acknowledgements. libgit2 is GPLv2 with a linking exception, which is App Store compatible. libssh2 is BSD.
 - **Storage: both git and Files folder ship in v1** (§5).
 - **YubiKey ships in v1** (M8).
+- **Device testing goes through TestFlight.** There's no iPhone for local runs, so on-device checks (Secure Enclave, Face ID, AutoFill, NFC) are batched into TestFlight builds. Until then, Secure Enclave code is tested with `swift test` on an Apple-silicon Mac, which has a Secure Enclave too.
