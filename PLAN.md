@@ -207,6 +207,8 @@ CryptoKit.
 | M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
 
+G3 status: done for every store type (not only GitHub), via git commits rather than the Contents API. "Add This Device as Recipient" appends the matching form (classic or post-quantum) to every `.age-recipients`; readability is judged from stanza tags against the device's public key, without Face ID. Verified live: desktop-only store flagged, recipient committed as `age1tag` next to a classic desktop key, "0 of 3 readable" until a desktop re-encrypt, then everything decrypts.
+
 M5 status: done, except SSH recipients (moved to M7). Create/edit/rename/delete with a generator (EFF passphrases), encryption to the nearest `.age-recipients`, re-encryption on moves across recipient sets, pass-style commit messages, sync (fetch → fast-forward or merge → push, retry once on a racing push). Conflicts never lose data: the remote version keeps the path, ours becomes `name (conflict YYYY-MM-DD HHmm).age`, and the app shows an alert listing the copies. Verified live: an entry saved in the Simulator was committed and pushed to GitHub over the deploy key as a valid age file.
 
 M4 status: done. HTTPS and SSH clone, fast-forward pull, and sync-on-foreground work. HTTPS is checked end to end in the Simulator (desktop `age` → git → app decrypts). SSH is tested against an in-process swift-nio-ssh git server (including a Secure Enclave client key) and against github.com's host key and auth; a device run against GitHub is on the checklist.
@@ -320,7 +322,7 @@ For users with no store yet:
 | --- | --- | --- |
 | G1 ✅ | GitHub App registration, device flow, repository picker, deploy key + SSH clone, token dropped | M4 (done) |
 | G2 | Per-store SSH keys; "Close Store" removes the deploy key (re-auth) | G1 |
-| G3 | Commit the device recipient, readable-entries progress, desktop instructions | M5 (writes) |
+| G3 ✅ | Commit the device recipient, readable-entries progress, desktop instructions | M5 (writes) |
 | G4 | Create a new store from the phone, recovery kit | G3 |
 | G5 | Background refresh with cheap remote-head checks | G1 |
 

@@ -305,3 +305,37 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: root.appending(path: "a").path))
     }
 }
+
+@Suite struct RecipientManagementTests {
+    let root = FileManager.default.temporaryDirectory.appending(path: "rcpt-\(UUID().uuidString)", directoryHint: .isDirectory)
+
+    @Test func addsToEveryFileMatchingPostQuantumness() async throws {
+        let classic = X25519Identity().recipient.encoded
+        let pq = try HybridIdentity().recipient.encoded
+        try FileManager.default.createDirectory(at: root.appending(path: "work/.git"), withIntermediateDirectories: true)
+        try Data("# me\n\(classic)".utf8).write(to: root.appending(path: ".age-recipients"))
+        try Data("\(pq)\n".utf8).write(to: root.appending(path: "work/.age-recipients"))
+        try Data("\(classic)\n".utf8).write(to: root.appending(path: "work/.git/.age-recipients"))
+        let store = LocalStore(root: root)
+        #expect(store.recipientsFiles() == ["", "work"])
+
+        let device = TagIdentity(key: try SoftwareTagKey(postQuantum: true))
+        let forms: Set = [device.classicRecipient.encoded, device.postQuantumRecipient!.encoded]
+        let changed = try await store.addRecipient(present: forms, comment: "iPhone (Passage)") { existing in
+            existing.contains { $0.labels.contains("postquantum") } ? device.postQuantumRecipient!.encoded : device.classicRecipient.encoded
+        }
+        #expect(changed == ["", "work"])
+        let top = try String(contentsOf: root.appending(path: ".age-recipients"), encoding: .utf8)
+        #expect(top == "# me\n\(classic)\n# iPhone (Passage)\n\(device.classicRecipient.encoded)\n")
+        #expect(try RecipientParser.parseFile(String(contentsOf: root.appending(path: "work/.age-recipients"), encoding: .utf8)).map(\.encoded) == [pq, device.postQuantumRecipient!.encoded])
+
+        // Idempotent.
+        #expect(try await store.addRecipient(present: forms, comment: "again") { _ in "x" }.isEmpty)
+
+        // And encrypting to the updated files works (no PQ/classic mix).
+        try await store.save(EntryPath("work/vpn"), plaintext: Data("v".utf8))
+        try await store.save(EntryPath("bank"), plaintext: Data("b".utf8))
+        let headers = await store.headers(of: [EntryPath("work/vpn"), EntryPath("bank")])
+        #expect(headers.values.allSatisfy { device.classicRecipient.canDecrypt($0) })
+    }
+}

@@ -104,7 +104,11 @@ struct EntryView: View {
             let text = String(decoding: plaintext, as: UTF8.self)
             phase = .decrypted(Entry(text), text: text)
         } catch {
-            phase = .failed(error.localizedDescription)
+            if store.readability?.unreadable.contains(entry) == true {
+                phase = .failed(String(localized: "This entry isn't encrypted to this device yet. Add the device as a recipient and run passage reencrypt on your computer."))
+            } else {
+                phase = .failed(error.localizedDescription)
+            }
         }
     }
 

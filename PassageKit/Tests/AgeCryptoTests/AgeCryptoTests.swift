@@ -133,3 +133,30 @@ import Testing
             """))
     }
 }
+
+@Suite struct TagAddressingTests {
+    @Test(arguments: [false, true])
+    func detectsStanzasForThisKeyWithoutThePrivateKey(postQuantum: Bool) throws {
+        let mine = TagIdentity(key: try SoftwareTagKey(postQuantum: true))
+        let other = X25519Identity()
+        let recipient = postQuantum ? mine.postQuantumRecipient! : mine.classicRecipient
+
+        let forMe = try Age.header(of: Age.encrypt(Data("x".utf8), to: [recipient]))
+        // Either form of the recipient recognizes both stanza types.
+        #expect(mine.classicRecipient.canDecrypt(forMe))
+        #expect(mine.postQuantumRecipient!.canDecrypt(forMe))
+
+        let notForMe = try Age.header(of: Age.encrypt(Data("x".utf8), to: [other.recipient]))
+        #expect(!mine.classicRecipient.canDecrypt(notForMe))
+        let otherTag = TagIdentity(key: try SoftwareTagKey(postQuantum: postQuantum))
+        let forSomeoneElse = try Age.header(of: Age.encrypt(Data("x".utf8), to: [postQuantum ? otherTag.postQuantumRecipient! : otherTag.classicRecipient]))
+        #expect(!mine.classicRecipient.canDecrypt(forSomeoneElse))
+    }
+
+    @Test func pivP256() throws {
+        let key = try SoftwareTagKey(postQuantum: false)
+        let se = try TagRecipient(Bech32.encode(hrp: "age1se", data: key.p256PublicKey.compressedRepresentation))
+        let header = try Age.header(of: Age.encrypt(Data("x".utf8), to: [se]))
+        #expect(TagIdentity(key: key).classicRecipient.canDecrypt(header))
+    }
+}

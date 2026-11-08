@@ -330,3 +330,25 @@ enum HPKEBase {
 
     static func bigEndian(_ v: UInt16) -> Data { Data([UInt8(v >> 8), UInt8(v & 0xFF)]) }
 }
+
+extension TagRecipient {
+    /// True if `stanza` is addressed to this key, judged from public data only (the stanza's
+    /// tag). Works for p256tag, mlkem768p256tag and piv-p256, whichever form of the recipient
+    /// this is, so it needs no user presence and never touches the private key.
+    public func isAddressed(by stanza: Stanza) -> Bool {
+        guard stanza.args.count == 2, let tag = Base64.decode(stanza.args[0]), tag.count == 4,
+            let enc = Base64.decode(stanza.args[1])
+        else { return false }
+        switch stanza.type {
+        case "p256tag": return Primitives.equal(tag, hpkeTag(enc: enc, recipient: p256PublicKey, hybrid: false))
+        case "mlkem768p256tag": return Primitives.equal(tag, hpkeTag(enc: enc, recipient: p256PublicKey, hybrid: true))
+        case "piv-p256": return Primitives.equal(tag, pivTag(p256PublicKey))
+        default: return false
+        }
+    }
+
+    /// True if any stanza in `header` is addressed to this key.
+    public func canDecrypt(_ header: Header) -> Bool {
+        header.stanzas.contains(where: isAddressed)
+    }
+}

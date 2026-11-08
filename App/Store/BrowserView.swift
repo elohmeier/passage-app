@@ -89,15 +89,14 @@ struct FolderView: View {
     var body: some View {
         let contents = store.snapshot.contents(of: folder)
         List {
+            if folder.isEmpty { RecipientStatusSection() }
             ForEach(contents.folders, id: \.self) { f in
                 NavigationLink(value: Route.folder(f)) {
                     Label(EntryPath(f).name, systemImage: "folder")
                 }
             }
             ForEach(contents.entries) { entry in
-                NavigationLink(value: Route.entry(entry)) {
-                    Label(entry.name, systemImage: "key.horizontal")
-                }
+                NavigationLink(value: Route.entry(entry)) { EntryLabel(entry: entry, title: entry.name) }
             }
         }
         .overlay {
@@ -125,7 +124,7 @@ struct SearchResultsView: View {
         List(results) { entry in
             NavigationLink(value: Route.entry(entry)) {
                 VStack(alignment: .leading) {
-                    Text(entry.name)
+                    EntryLabel(entry: entry, title: entry.name)
                     if !entry.folder.isEmpty {
                         Text(entry.folder)
                             .font(.caption)
@@ -137,5 +136,19 @@ struct SearchResultsView: View {
         .overlay {
             if results.isEmpty { ContentUnavailableView.search }
         }
+    }
+}
+
+/// An entry row; dimmed with a lock-slash icon if it isn't encrypted to this device.
+struct EntryLabel: View {
+    @Environment(StoreModel.self) private var store
+    let entry: EntryPath
+    let title: String
+
+    var body: some View {
+        let unreadable = store.readability?.unreadable.contains(entry) == true
+        Label(title, systemImage: unreadable ? "lock.slash" : "key.horizontal")
+            .foregroundStyle(unreadable ? .secondary : .primary)
+            .accessibilityHint(unreadable ? Text("Not encrypted to this device yet") : Text(""))
     }
 }

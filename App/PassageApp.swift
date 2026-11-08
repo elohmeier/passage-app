@@ -15,6 +15,7 @@ struct PassageApp: App {
             ContentView()
                 .environment(model)
                 .environment(store)
+                .onChange(of: model.identities, initial: true) { _, identities in store.identities = identities }
                 .onAppear {
                     #if DEBUG
                         if UserDefaults.standard.bool(forKey: "PassageReset") { store.close() }
@@ -27,6 +28,13 @@ struct PassageApp: App {
                     #endif
                     store.restore()
                     #if DEBUG
+                        // `-PassageDebugAddRecipient YES` taps "Add This Device as Recipient" after the first sync.
+                        if UserDefaults.standard.bool(forKey: "PassageDebugAddRecipient") {
+                            Task {
+                                try? await Task.sleep(for: .seconds(4))
+                                do { try await store.addDeviceAsRecipient() } catch { store.errorMessage = error.localizedDescription }
+                            }
+                        }
                         // `-PassageDebugSave <path>` writes a test entry through the normal save path.
                         if let path = UserDefaults.standard.string(forKey: "PassageDebugSave") {
                             Task {

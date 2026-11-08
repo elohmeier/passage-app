@@ -225,6 +225,68 @@ final class StoreModel {
         try attachGit(config)
     }
 
+    // MARK: Readability
+
+    /// How much of the store this device can decrypt, judged from stanza tags (no keys used).
+    struct Readability: Equatable {
+        /// Every .age-recipients lists this device.
+        var isRecipient: Bool
+        var unreadable: Set<EntryPath>
+        var total: Int
+        var readable: Int { total - unreadable.count }
+    }
+
+    private(set) var readability: Readability?
+
+    /// Set by the app; used to judge readability and to add the device as a recipient.
+    var identities: [StoredIdentity] = [] {
+        didSet { if identities != oldValue { Task { await updateReadability() } } }
+    }
+
+    private var deviceIdentity: StoredIdentity? {
+        identities.first { $0.kind == .secureEnclave || $0.kind == .simulator }
+    }
+
+    func updateReadability() async {
+        guard let store, let device = deviceIdentity,
+            let tag = device.recipients.compactMap({ try? TagRecipient($0) }).first
+        else {
+            readability = nil
+            return
+        }
+        let forms = Set(device.recipients)
+        var isRecipient = true
+        for folder in store.recipientsFiles() {
+            let entry = EntryPath(folder.isEmpty ? "_" : folder + "/_")
+            let encoded = (try? await store.recipients(for: entry).map(\.encoded)) ?? []
+            if forms.isDisjoint(with: encoded) { isRecipient = false }
+        }
+        // Stanza types our imported identities might open; those entries count as readable.
+        let importedTypes: Set<String> = Set(identities.filter { $0.kind == .imported }.flatMap { identity in
+            identity.recipients.map { $0.hasPrefix("age1pq1") ? "mlkem768x25519" : "X25519" }
+        })
+        let entries = snapshot.entries
+        let headers = await store.headers(of: entries)
+        let unreadable = Set(entries.filter { entry in
+            guard let header = headers[entry] else { return false }
+            return !tag.canDecrypt(header) && !header.stanzas.contains { importedTypes.contains($0.type) }
+        })
+        readability = Readability(isRecipient: isRecipient, unreadable: unreadable, total: entries.count)
+    }
+
+    /// Adds this device's recipient to every .age-recipients that lacks it, then commits and syncs.
+    func addDeviceAsRecipient() async throws {
+        guard let store, let device = deviceIdentity else { return }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        let name = UIDevice.current.name
+        let changed = try await store.addRecipient(
+            present: Set(device.recipients), comment: "\(name) (Passage, \(f.string(from: .now)))"
+        ) { device.recommendedRecipient(alongside: $0) }
+        guard !changed.isEmpty else { return }
+        await commit("Add \(name) (Passage) as recipient.")
+    }
+
     /// Set after a sync that had to keep both sides of conflicting edits.
     var conflictCopies: [String] = []
 
@@ -362,6 +424,7 @@ final class StoreModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        await updateReadability()
     }
 
     func read(_ entry: EntryPath) async throws -> Data {

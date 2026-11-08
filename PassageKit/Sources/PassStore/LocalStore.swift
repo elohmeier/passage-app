@@ -217,3 +217,61 @@ extension LocalStore {
         }
     }
 }
+
+// MARK: Recipients management
+
+extension LocalStore {
+    /// Every `.age-recipients` in the store, relative to the root (`""` is the top level),
+    /// skipping hidden folders such as `.git`.
+    public func recipientsFiles() -> [String] {
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
+        let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        var folders: [String] = []
+        for case let url as URL in enumerator {
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDirectory, url.lastPathComponent.hasPrefix(".") {
+                enumerator.skipDescendants()
+                continue
+            }
+            guard url.lastPathComponent == ".age-recipients" else { continue }
+            let folder = url.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath().path
+            folders.append(folder == rootPath ? "" : String(folder.dropFirst(rootPath.count + 1)))
+        }
+        return folders.sorted()
+    }
+
+    /// Appends a recipient to every `.age-recipients` that doesn't list it yet. `choose` picks
+    /// the form to add given a file's existing recipients (age can't mix post-quantum and
+    /// classic recipients in one file); `present` are all forms of the same key, so a file
+    /// that already has any of them is left alone. Returns the folders that changed.
+    public func addRecipient(
+        present: Set<String>, comment: String, choose: @Sendable ([any AgeRecipient]) -> String
+    ) async throws -> [String] {
+        var changed: [String] = []
+        for folder in recipientsFiles() {
+            let url = (folder.isEmpty ? root : root.appending(path: folder, directoryHint: .isDirectory)).appending(path: ".age-recipients")
+            let text = try await coordinated(reading: url) { try String(contentsOf: $0, encoding: .utf8) }
+            let existing = try RecipientParser.parseFile(text)
+            guard existing.allSatisfy({ !present.contains($0.encoded) }) else { continue }
+            let line = choose(existing)
+            let updated = (text.hasSuffix("\n") || text.isEmpty ? text : text + "\n") + "# \(comment)\n\(line)\n"
+            try await coordinated(writing: url) { try Data(updated.utf8).write(to: $0, options: .atomic) }
+            changed.append(folder)
+        }
+        return changed
+    }
+
+    /// Headers of the given entries that are available locally (iCloud placeholders are
+    /// skipped rather than downloaded). Unparseable files are left out.
+    public func headers(of entries: [EntryPath]) async -> [EntryPath: Header] {
+        let urls = entries.map { ($0, url(for: $0)) }
+        return await Task.detached {
+            var out: [EntryPath: Header] = [:]
+            for (entry, url) in urls {
+                guard let data = try? Data(contentsOf: url, options: .mappedIfSafe), let header = try? Age.header(of: data) else { continue }
+                out[entry] = header
+            }
+            return out
+        }.value
+    }
+}
