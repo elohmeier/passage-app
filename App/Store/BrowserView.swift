@@ -14,6 +14,7 @@ struct BrowserView: View {
     @Environment(StoreModel.self) private var store
     @State private var path = NavigationPath()
     @State private var query = ""
+    @State private var debugEditor: EntryEditorView.Mode?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -39,6 +40,7 @@ struct BrowserView: View {
             }
             #if DEBUG
                 .onAppear(perform: applyDebugRoute)
+                .sheet(item: $debugEditor) { EntryEditorView(mode: $0) }
             #endif
             .navigationDestination(for: Route.self) { route in
                 switch route {
@@ -64,6 +66,7 @@ struct BrowserView: View {
             case "folder": path.append(Route.folder(arg))
             case "search": query = arg
             case "keys": path.append(Route.keys)
+            case "new": debugEditor = .new(folder: arg)
             case "identity":
                 path.append(Route.keys)
                 if let device = model.deviceIdentity { path.append(device) }
@@ -81,6 +84,7 @@ struct BrowserView: View {
 struct FolderView: View {
     @Environment(StoreModel.self) private var store
     let folder: String
+    @State private var creating: EntryEditorView.Mode?
 
     var body: some View {
         let contents = store.snapshot.contents(of: folder)
@@ -105,6 +109,12 @@ struct FolderView: View {
         }
         .navigationTitle(folder.isEmpty ? store.name : EntryPath(folder).name)
         .refreshable { await store.sync() }
+        .toolbar {
+            ToolbarItem(placement: .bottomBar) {
+                Button("New Password", systemImage: "plus") { creating = .new(folder: folder) }
+            }
+        }
+        .sheet(item: $creating) { EntryEditorView(mode: $0) }
     }
 }
 

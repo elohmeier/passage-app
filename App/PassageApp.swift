@@ -1,4 +1,5 @@
 import KeyStore
+import PassStore
 import SwiftUI
 
 @main
@@ -26,6 +27,16 @@ struct PassageApp: App {
                     #endif
                     store.restore()
                     #if DEBUG
+                        // `-PassageDebugSave <path>` writes a test entry through the normal save path.
+                        if let path = UserDefaults.standard.string(forKey: "PassageDebugSave") {
+                            Task {
+                                do {
+                                    try await store.save(EntryPath(path), text: "debug-\(Int(Date.now.timeIntervalSince1970))\nusername: simulator\n", isNew: true)
+                                } catch {
+                                    store.errorMessage = error.localizedDescription
+                                }
+                            }
+                        }
                         // `-PassageClone <url>` clones a repository on launch.
                         if let remote = UserDefaults.standard.string(forKey: "PassageClone"), store.gitConfig?.remote != remote {
                             Task {
@@ -50,6 +61,13 @@ struct PassageApp: App {
                     Button("OK") {}
                 } message: {
                     Text(model.errorMessage ?? "")
+                }
+                .alert(
+                    "Conflicting Edits", isPresented: Binding(get: { !store.conflictCopies.isEmpty }, set: { if !$0 { store.conflictCopies = [] } })
+                ) {
+                    Button("OK") {}
+                } message: {
+                    Text("Another device changed the same entries. Their version is kept, and yours was saved alongside as:\n\n\(store.conflictCopies.joined(separator: "\n"))\n\nCompare them and delete the one you don't need.")
                 }
                 .alert(
                     "Store Error", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })

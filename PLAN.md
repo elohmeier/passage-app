@@ -201,11 +201,13 @@ CryptoKit.
 | M2 🟡 | `KeyStore`: SE tagged keys (p256tag, mlkem768p256tag), imported keys, unlock sessions | Encrypt to `age1tagpq` with `age` on a Mac, decrypt on a device |
 | M3 🟡 | Read-only app with the Files folder backend: open a store folder, tree, search, entry view, copy, TOTP | Daily use for reading a real passage store from iCloud Drive |
 | M4 ✅ | `GitSync`: clone/fetch/merge (read-only), HTTPS + SSH Ed25519, known_hosts | Clone a private GitHub repo over SSH |
-| M5 | Writing: create, edit, move, delete, multi-recipient encryption, commit/push, conflict UI, re-encrypt | Round trip with desktop `passage` including conflicts |
+| M5 ✅ | Writing: create, edit, move, delete, multi-recipient encryption, commit/push, conflict UI, re-encrypt | Round trip with desktop `passage` including conflicts |
 | M6 | AutoFill extension: bulk identity store, OTP credentials, text insertion | Safari login plus 2FA fill |
 | M7 | App Intents, Control Center control, generator presets, recipient health check, polish | — |
 | M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
+
+M5 status: done, except SSH recipients (moved to M7). Create/edit/rename/delete with a generator (EFF passphrases), encryption to the nearest `.age-recipients`, re-encryption on moves across recipient sets, pass-style commit messages, sync (fetch → fast-forward or merge → push, retry once on a racing push). Conflicts never lose data: the remote version keeps the path, ours becomes `name (conflict YYYY-MM-DD HHmm).age`, and the app shows an alert listing the copies. Verified live: an entry saved in the Simulator was committed and pushed to GitHub over the deploy key as a valid age file.
 
 M4 status: done. HTTPS and SSH clone, fast-forward pull, and sync-on-foreground work. HTTPS is checked end to end in the Simulator (desktop `age` → git → app decrypts). SSH is tested against an in-process swift-nio-ssh git server (including a Secure Enclave client key) and against github.com's host key and auth; a device run against GitHub is on the checklist.
 

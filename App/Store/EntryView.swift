@@ -12,12 +12,15 @@ struct EntryView: View {
     private enum Phase {
         case locked
         case decrypting
-        case decrypted(Entry)
+        case decrypted(Entry, text: String)
         case failed(String)
     }
 
     @State private var phase = Phase.locked
     @State private var copied: String?
+    @State private var editing: EntryEditorView.Mode?
+    @State private var confirmingDelete = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         Group {
@@ -25,7 +28,7 @@ struct EntryView: View {
             case .locked, .decrypting:
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .decrypted(let e):
+            case .decrypted(let e, _):
                 EntryDetail(entry: e, copy: copy)
             case .failed(let message):
                 ContentUnavailableView {
@@ -39,6 +42,38 @@ struct EntryView: View {
         }
         .navigationTitle(entry.name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if case .decrypted(_, let text) = phase {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Edit") { editing = .edit(entry, text: text) }
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu("More", systemImage: "ellipsis") {
+                    Button("Delete", systemImage: "trash", role: .destructive) { confirmingDelete = true }
+                }
+            }
+        }
+        .sheet(item: $editing) { mode in
+            EntryEditorView(mode: mode) { saved in
+                if saved != entry { dismiss() }
+                Task { await decrypt() }
+            }
+        }
+        .confirmationDialog("Delete \(entry.name)?", isPresented: $confirmingDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    do {
+                        try await store.delete(entry)
+                        dismiss()
+                    } catch {
+                        phase = .failed(error.localizedDescription)
+                    }
+                }
+            }
+        } message: {
+            Text(store.gitConfig != nil ? "The deletion is committed and synced. It stays in the git history." : "This deletes the file from the folder.")
+        }
         .overlay(alignment: .bottom) {
             if let copied {
                 Label("\(copied) copied, clears in \(model.clipboardSeconds) s", systemImage: "doc.on.doc")
@@ -66,7 +101,8 @@ struct EntryView: View {
         do {
             let ciphertext = try await store.read(entry)
             let plaintext = try await model.decrypt(ciphertext)
-            phase = .decrypted(Entry(String(decoding: plaintext, as: UTF8.self)))
+            let text = String(decoding: plaintext, as: UTF8.self)
+            phase = .decrypted(Entry(text), text: text)
         } catch {
             phase = .failed(error.localizedDescription)
         }

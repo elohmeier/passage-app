@@ -4,6 +4,7 @@ import GitSync
 import KeyStore
 import Observation
 import PassStore
+import UIKit
 
 /// Where the open store comes from.
 struct GitStoreConfig: Codable, Equatable {
@@ -224,7 +225,11 @@ final class StoreModel {
         try attachGit(config)
     }
 
-    /// Pulls (git) and rescans.
+    /// Set after a sync that had to keep both sides of conflicting edits.
+    var conflictCopies: [String] = []
+
+    /// Pulls and pushes (git), then rescans. Local commits stay if the network fails and go
+    /// out with the next sync.
     func sync() async {
         guard let git, let gitConfig else {
             await refresh()
@@ -233,12 +238,69 @@ final class StoreModel {
         isSyncing = true
         defer { isSyncing = false }
         do {
-            _ = try await git.pull(credentials: storedCredentials(for: gitConfig), knownHosts: knownHosts)
+            let result = try await git.sync(credentials: storedCredentials(for: gitConfig), knownHosts: knownHosts, author: Self.author)
+            if !result.conflictCopies.isEmpty { conflictCopies = result.conflictCopies }
             lastCommit = try? await git.headCommit()
         } catch {
             errorMessage = error.localizedDescription
         }
         await refresh()
+    }
+
+    // MARK: Writing
+
+    static var author: GitRepo.Signature {
+        GitRepo.Signature(name: "Passage on \(UIDevice.current.name)", email: "passage@\(UIDevice.current.model.lowercased()).invalid")
+    }
+
+    /// Encrypts and writes an entry, then commits and syncs (git).
+    func save(_ entry: EntryPath, text: String, isNew: Bool) async throws {
+        guard let store else { throw StoreError.accessDenied }
+        try await store.save(entry, plaintext: Data(text.utf8))
+        await commit(isNew ? "Add given password for \(entry.path) to store." : "Edit password for \(entry.path) using Passage.")
+    }
+
+    /// Saves edited content under a new name and removes the old one, as one commit.
+    func rename(_ from: EntryPath, to: EntryPath, text: String) async throws {
+        guard let store else { throw StoreError.accessDenied }
+        try await store.save(to, plaintext: Data(text.utf8))
+        try await store.delete(from)
+        await commit("Rename \(from.path) to \(to.path).")
+    }
+
+    func delete(_ entry: EntryPath) async throws {
+        guard let store else { throw StoreError.accessDenied }
+        try await store.delete(entry)
+        await commit("Remove \(entry.path) from store.")
+    }
+
+    func move(_ from: EntryPath, to: EntryPath, decrypt: @escaping @Sendable (Data) async throws -> Data) async throws {
+        guard let store else { throw StoreError.accessDenied }
+        try await store.move(from, to: to, decrypt: decrypt)
+        await commit("Rename \(from.path) to \(to.path).")
+    }
+
+    /// The recipients a new or edited entry at `entry` will be encrypted to.
+    func recipients(for entry: EntryPath) async -> Result<[String], any Error> {
+        guard let store else { return .failure(StoreError.accessDenied) }
+        do {
+            return .success(try await store.recipients(for: entry).map(\.encoded))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    private func commit(_ message: String) async {
+        if let git {
+            do {
+                try await git.commitAll(message: message, author: Self.author)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+            await sync()
+        } else {
+            await refresh()
+        }
     }
 
     private func storedCredentials(for config: GitStoreConfig) -> GitCredentials {
