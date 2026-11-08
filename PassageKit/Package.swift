@@ -54,6 +54,7 @@ let package = Package(
         .library(name: "KeyStore", targets: ["KeyStore"]),
         .library(name: "PassStore", targets: ["PassStore"]),
         .library(name: "GitSync", targets: ["GitSync"]),
+        .library(name: "GitHubKit", targets: ["GitHubKit"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.105.0"),
@@ -81,6 +82,8 @@ let package = Package(
             resources: [.copy("testkit")]
         ),
         .testTarget(name: "KeyStoreTests", dependencies: ["KeyStore"]),
+        .target(name: "GitHubKit"),
+        .testTarget(name: "GitHubKitTests", dependencies: ["GitHubKit"]),
         .testTarget(name: "PassStoreTests", dependencies: ["PassStore"]),
         .testTarget(
             name: "GitSyncTests",

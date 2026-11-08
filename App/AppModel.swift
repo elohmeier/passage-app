@@ -9,6 +9,21 @@ enum AppConfig {
     /// Team ID prefix + shared group, see Config/Passage.entitlements.
     static let keychainAccessGroup = "D7DW22G9T5.de.nerdworks.passage.shared"
     static let appGroup = "group.de.nerdworks.passage"
+    /// The "Passage for iOS" GitHub App (public values; there is no client secret).
+    /// Nil until the app is registered: "Connect GitHub" is hidden.
+    static var gitHubClientID: String? {
+        #if DEBUG
+            if let id = UserDefaults.standard.string(forKey: "PassageGitHubClientID") { return id }
+        #endif
+        return nil
+    }
+
+    static var gitHubAppSlug: String? {
+        #if DEBUG
+            if let slug = UserDefaults.standard.string(forKey: "PassageGitHubSlug") { return slug }
+        #endif
+        return nil
+    }
 }
 
 /// The unlock policy choices offered in Settings.

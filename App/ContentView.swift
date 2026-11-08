@@ -27,6 +27,7 @@ struct WelcomeView: View {
     @Environment(StoreModel.self) private var store
     @State private var showingPicker = false
     @State private var showingClone = false
+    @State private var showingGitHub = false
 
     var body: some View {
         NavigationStack {
@@ -47,6 +48,9 @@ struct WelcomeView: View {
                     .listRowBackground(Color.clear)
                 }
                 Section {
+                    if AppConfig.gitHubClientID != nil {
+                        Button("Connect GitHub", systemImage: "link") { showingGitHub = true }
+                    }
                     Button("Open Folder…", systemImage: "folder") { showingPicker = true }
                     Button("Clone Git Repository…", systemImage: "arrow.triangle.branch") { showingClone = true }
                     Button("Try Demo Store", systemImage: "sparkles") { store.openDemoStore(using: model) }
@@ -75,9 +79,15 @@ struct WelcomeView: View {
                 }
             }
             .sheet(isPresented: $showingClone) { CloneView(remote: debugCloneURL) }
+            .sheet(isPresented: $showingGitHub) {
+                if let id = AppConfig.gitHubClientID, let slug = AppConfig.gitHubAppSlug {
+                    GitHubConnectView(clientID: id, appSlug: slug)
+                }
+            }
             #if DEBUG
                 .onAppear {
                     if UserDefaults.standard.string(forKey: "PassageRoute") == "clone" { showingClone = true }
+                    if UserDefaults.standard.string(forKey: "PassageRoute") == "github" { showingGitHub = true }
                 }
             #endif
             .fileImporter(isPresented: $showingPicker, allowedContentTypes: [.folder]) { result in

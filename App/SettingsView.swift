@@ -43,7 +43,10 @@ struct SettingsView: View {
             if store.store != nil {
                 Section {
                     if let git = store.gitConfig {
-                        LabeledContent("Repository", value: git.remote)
+                        LabeledContent("Repository", value: git.gitHub?.fullName ?? git.remote)
+                        if let gitHub = git.gitHub, let url = URL(string: "https://github.com/\(gitHub.fullName)/settings/keys") {
+                            Link(destination: url) { Label("Deploy Keys on GitHub", systemImage: "arrow.up.forward.app") }
+                        }
                         if let commit = store.lastCommit {
                             LabeledContent("Last Commit") {
                                 VStack(alignment: .trailing) {
@@ -65,7 +68,9 @@ struct SettingsView: View {
                 } header: {
                     Text("Store")
                 } footer: {
-                    if store.gitConfig != nil {
+                    if store.gitConfig?.gitHub != nil {
+                        Text("Closing deletes the local clone and this store's SSH key. Also remove the \"Passage on …\" deploy key on GitHub; the key itself is gone either way.")
+                    } else if store.gitConfig != nil {
                         Text("Closing deletes the local clone and the saved token. The remote repository is not touched.")
                     } else {
                         Text("Closing only forgets the folder. Nothing is deleted.")

@@ -12,6 +12,16 @@ struct GitStoreConfig: Codable, Equatable {
     var remote: String
     var branch: String?
     var username: String
+    /// Secret store key of this store's own SSH key (GitHub deploy keys must be unique per
+    /// repository). Nil means the device's shared SSH key.
+    var sshKeyName: String?
+    /// Set for stores connected through "Connect GitHub".
+    var gitHub: GitHubLink?
+
+    struct GitHubLink: Codable, Equatable {
+        var fullName: String
+        var deployKeyID: Int
+    }
 
     /// `git@host:path` or `ssh://…`.
     var usesSSH: Bool { Self.isSSH(remote) }
@@ -90,6 +100,24 @@ final class StoreModel {
         return key
     }
 
+    /// Creates an SSH key for one store and returns it with its secret store name.
+    func newStoreSSHKey() throws -> (key: SSHKey, name: String) {
+        let key = (try? SSHKey.generateSecureEnclave()) ?? .generateEd25519()
+        let name = "ssh.key.\(UUID().uuidString)"
+        try secrets.set(try JSONEncoder().encode(key), for: name, accessControl: nil)
+        return (key, name)
+    }
+
+    func deleteSSHKey(named name: String) {
+        try? secrets.delete(name)
+    }
+
+    private func sshKey(named name: String?) throws -> SSHKey {
+        guard let name else { return try deviceSSHKey() }
+        guard let data = try secrets.get(name, context: nil) else { throw StoreError.notFound("SSH key") }
+        return try JSONDecoder().decode(SSHKey.self, from: data)
+    }
+
     func trust(_ key: HostKey) {
         knownHosts.trust(key)
         saveKnownHosts()
@@ -163,13 +191,16 @@ final class StoreModel {
 
     /// Clones `remote` into the app's container and opens it. Throws so the clone sheet can
     /// show the error inline.
-    func clone(remote: String, branch: String?, username: String, password: String) async throws {
-        close()
+    func clone(
+        remote: String, branch: String?, username: String, password: String, sshKeyName: String? = nil,
+        gitHub: GitStoreConfig.GitHubLink? = nil
+    ) async throws {
+        close(keepingSSHKey: sshKeyName)
         let directory = UUID().uuidString
         let target = Self.gitStoresRoot.appending(path: directory, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: Self.gitStoresRoot, withIntermediateDirectories: true)
         let credentials: GitCredentials = if GitStoreConfig.isSSH(remote) {
-            .ssh(username: username.isEmpty ? nil : username, key: try deviceSSHKey())
+            .ssh(username: username.isEmpty ? nil : username, key: try sshKey(named: sshKeyName))
         } else if password.isEmpty {
             .none
         } else {
@@ -184,7 +215,8 @@ final class StoreModel {
             Task { @MainActor in self?.cloneProgress = progress }
         }
 
-        let config = GitStoreConfig(directory: directory, remote: remote, branch: branch, username: username)
+        let config = GitStoreConfig(
+            directory: directory, remote: remote, branch: branch, username: username, sshKeyName: sshKeyName, gitHub: gitHub)
         if !password.isEmpty && !config.usesSSH {
             try secrets.set(Data(password.utf8), for: Self.gitPasswordKey, accessControl: nil)
         }
@@ -210,7 +242,7 @@ final class StoreModel {
     }
 
     private func storedCredentials(for config: GitStoreConfig) -> GitCredentials {
-        if config.usesSSH, let key = try? deviceSSHKey() {
+        if config.usesSSH, let key = try? sshKey(named: config.sshKeyName) {
             return .ssh(username: config.username.isEmpty ? nil : config.username, key: key)
         }
         guard let data = try? secrets.get(Self.gitPasswordKey, context: nil) else { return .none }
@@ -239,13 +271,14 @@ final class StoreModel {
 
     /// Forgets the store. A git clone lives inside the app and is deleted, together with its
     /// credentials; a Files folder is left untouched.
-    func close() {
+    func close(keepingSSHKey keep: String? = nil) {
         watcher?.stop()
         access?.close()
         refreshTask?.cancel()
         if let gitConfig {
             try? FileManager.default.removeItem(at: Self.gitStoresRoot.appending(path: gitConfig.directory))
             try? secrets.delete(Self.gitPasswordKey)
+            if let name = gitConfig.sshKeyName, name != keep { try? secrets.delete(name) }
         }
         watcher = nil
         access = nil
