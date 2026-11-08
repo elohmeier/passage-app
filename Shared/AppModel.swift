@@ -49,6 +49,8 @@ final class AppModel {
 
     private(set) var identities: [StoredIdentity] = []
     var errorMessage: String?
+    /// Set by intents that open the app at a specific place.
+    var pendingRoute: PendingRoute?
 
     /// Seconds until copied secrets are removed from the clipboard.
     var clipboardSeconds: Int {

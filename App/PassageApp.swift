@@ -11,10 +11,8 @@ struct PassageApp: App {
         }
     }
 
-    @State private var model = AppModel.live()
-    @State private var store = StoreModel(
-        defaults: AppModel.sharedDefaults,
-        secrets: KeychainSecretStore(service: AppConfig.keychainService + ".git", accessGroup: AppConfig.keychainAccessGroup))
+    @State private var model = PassageEnvironment.model
+    @State private var store = PassageEnvironment.store
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

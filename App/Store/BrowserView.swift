@@ -16,6 +16,7 @@ struct BrowserView: View {
     @Environment(StoreModel.self) private var store
     @State private var path = NavigationPath()
     @State private var query = ""
+    @FocusState private var searchFocused: Bool
     @State private var debugEditor: EntryEditorView.Mode?
     @State private var debugAutoFill: String?
 
@@ -41,6 +42,19 @@ struct BrowserView: View {
                     }
                 }
             }
+            .onChange(of: model.pendingRoute, initial: true) { _, route in
+                guard let route else { return }
+                model.pendingRoute = nil
+                switch route {
+                case .entry(let entry):
+                    path = NavigationPath()
+                    path.append(Route.entry(entry))
+                case .search:
+                    path = NavigationPath()
+                    searchFocused = true
+                }
+            }
+            .searchFocused($searchFocused)
             #if DEBUG
                 .onAppear(perform: applyDebugRoute)
                 .sheet(item: $debugEditor) { EntryEditorView(mode: $0) }

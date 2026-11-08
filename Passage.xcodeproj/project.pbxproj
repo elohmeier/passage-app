@@ -17,6 +17,11 @@
 		AA0000000000000000000213 /* PassStore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000313 /* PassStore */; };
 		AA0000000000000000000214 /* GitSync in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000314 /* GitSync */; };
 		AA0000000000000000000220 /* AutoFill.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000102 /* AutoFill.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA0000000000000000000221 /* AgeCrypto in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000321 /* AgeCrypto */; };
+		AA0000000000000000000222 /* KeyStore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000322 /* KeyStore */; };
+		AA0000000000000000000223 /* PassStore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000323 /* PassStore */; };
+		AA0000000000000000000224 /* GitSync in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000324 /* GitSync */; };
+		AA0000000000000000000230 /* Controls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000103 /* Controls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -26,6 +31,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = AA0000000000000000000710;
 			remoteInfo = AutoFill;
+		};
+		AA0000000000000000000726 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000801 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000720;
+			remoteInfo = Controls;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -37,6 +49,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				AA0000000000000000000220 /* AutoFill.appex in Embed Foundation Extensions */,
+				AA0000000000000000000230 /* Controls.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -46,6 +59,7 @@
 /* Begin PBXFileReference section */
 		AA0000000000000000000101 /* Passage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Passage.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA0000000000000000000102 /* AutoFill.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AutoFill.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000103 /* Controls.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = Controls.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -62,6 +76,11 @@
 		AA0000000000000000000403 /* AutoFill */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = AutoFill;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000404 /* Controls */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Controls;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -90,6 +109,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000722 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000221 /* AgeCrypto in Frameworks */,
+				AA0000000000000000000222 /* KeyStore in Frameworks */,
+				AA0000000000000000000223 /* PassStore in Frameworks */,
+				AA0000000000000000000224 /* GitSync in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -99,6 +129,7 @@
 				AA0000000000000000000401 /* App */,
 				AA0000000000000000000402 /* Shared */,
 				AA0000000000000000000403 /* AutoFill */,
+				AA0000000000000000000404 /* Controls */,
 				AA0000000000000000000602 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -108,6 +139,7 @@
 			children = (
 				AA0000000000000000000101 /* Passage.app */,
 				AA0000000000000000000102 /* AutoFill.appex */,
+				AA0000000000000000000103 /* Controls.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -128,6 +160,7 @@
 			);
 			dependencies = (
 				AA0000000000000000000715 /* PBXTargetDependency */,
+				AA0000000000000000000725 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				AA0000000000000000000401 /* App */,
@@ -172,6 +205,33 @@
 			productReference = AA0000000000000000000102 /* AutoFill.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AA0000000000000000000720 /* Controls */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000904 /* Build configuration list for PBXNativeTarget "Controls" */;
+			buildPhases = (
+				AA0000000000000000000721 /* Sources */,
+				AA0000000000000000000722 /* Frameworks */,
+				AA0000000000000000000723 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AA0000000000000000000404 /* Controls */,
+				AA0000000000000000000402 /* Shared */,
+			);
+			name = Controls;
+			packageProductDependencies = (
+				AA0000000000000000000321 /* AgeCrypto */,
+				AA0000000000000000000322 /* KeyStore */,
+				AA0000000000000000000323 /* PassStore */,
+				AA0000000000000000000324 /* GitSync */,
+			);
+			productName = Controls;
+			productReference = AA0000000000000000000103 /* Controls.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -201,6 +261,7 @@
 			targets = (
 				AA0000000000000000000701 /* Passage */,
 				AA0000000000000000000710 /* AutoFill */,
+				AA0000000000000000000720 /* Controls */,
 			);
 		};
 /* End PBXProject section */
@@ -214,6 +275,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA0000000000000000000713 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000723 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -237,6 +305,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000721 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -244,6 +319,11 @@
 			isa = PBXTargetDependency;
 			target = AA0000000000000000000710 /* AutoFill */;
 			targetProxy = AA0000000000000000000716 /* PBXContainerItemProxy */;
+		};
+		AA0000000000000000000725 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000720 /* Controls */;
+			targetProxy = AA0000000000000000000726 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -372,6 +452,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/AutoFill.entitlements;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AUTOFILL_EXTENSION $(inherited)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -399,6 +480,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/AutoFill.entitlements;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AUTOFILL_EXTENSION $(inherited)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -413,6 +495,62 @@
 				);
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = de.nerdworks.passage.autofill;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA0000000000000000000B05 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/Controls.entitlements;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CONTROLS_EXTENSION $(inherited)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D7DW22G9T5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Controls-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Passage;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Passage uses Face ID to unlock your keys.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = de.nerdworks.passage.controls;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000B06 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Config/Controls.entitlements;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CONTROLS_EXTENSION $(inherited)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = D7DW22G9T5;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Controls-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Passage;
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Passage uses Face ID to unlock your keys.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = de.nerdworks.passage.controls;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -448,6 +586,15 @@
 			buildConfigurations = (
 				AA0000000000000000000B03 /* Debug */,
 				AA0000000000000000000B04 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000904 /* Build configuration list for PBXNativeTarget "Controls" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000B05 /* Debug */,
+				AA0000000000000000000B06 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -495,6 +642,22 @@
 			productName = PassStore;
 		};
 		AA0000000000000000000314 /* GitSync */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GitSync;
+		};
+		AA0000000000000000000321 /* AgeCrypto */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = AgeCrypto;
+		};
+		AA0000000000000000000322 /* KeyStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = KeyStore;
+		};
+		AA0000000000000000000323 /* PassStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PassStore;
+		};
+		AA0000000000000000000324 /* GitSync */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GitSync;
 		};
