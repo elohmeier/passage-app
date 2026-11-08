@@ -39,3 +39,10 @@ testflight:
     # System PATH: Xcode's export breaks with Homebrew's rsync 3.x ("Copy failed").
     env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath .build/Passage.xcarchive -exportPath .build/export \
         -exportOptionsPlist Config/ExportOptions.plist -allowProvisioningUpdates {{asc_auth}}
+
+# Upload the existing archive (.build/Passage.xcarchive) without rebuilding. Run in a GUI
+# Terminal the first time, so macOS can ask to let codesign use the distribution key.
+upload:
+    rm -rf .build/export
+    env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath .build/Passage.xcarchive -exportPath .build/export \
+        -exportOptionsPlist Config/ExportOptions.plist -allowProvisioningUpdates
