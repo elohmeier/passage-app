@@ -235,6 +235,26 @@ Things `swift test` on the Mac can't cover:
 - [ ] Clone a GitHub repo over SSH with the device's Secure Enclave key added as a deploy key; pull after a desktop push.
 - [ ] Clone over SSH from a non-GitHub host: the fingerprint prompt appears once, and the host is listed under Known Hosts.
 
+## 10. Risks and open questions
+
+- **Building libgit2 for iOS** (with SSH and TLS) is the biggest integration cost. If SwiftGitX doesn't fit, the fallback is our own xcframework script. HTTPS-only for v1 is an acceptable reduced scope.
+- ~~**CryptoKit X-Wing vs. age's `mlkem768x25519`**~~: resolved. CryptoKit's `XWingMLKEM768X25519` with `seedRepresentation` passes all the hybrid CCTV vectors and round-trips with `age -pq`.
+- **Post-quantum and classic recipients can't be mixed in one file** (age refuses). A store whose `.age-recipients` holds desktop X25519 keys therefore needs the device's `age1tag` recipient, not `age1tagpq`. The SE identity always has both a P-256 and an ML-KEM key, so it can decrypt either stanza type. Onboarding offers whichever recipient matches the store's existing recipients.
+- **SE-only users lose everything if they lose the device.** This is mitigated by the mandatory second recipient (§4).
+- **Plugin recipients** (other than `se`, `tag`, `yubikey`) can't run on iOS. Those folders are read-only, which needs clear UX.
+- **YubiKey in AutoFill**: NFC sessions work in extensions, but the UI is tight. This needs a prototype early in M8.
+
+## 11. Decisions
+
+- **Distribution: App Store.** Consequences:
+  - Export compliance: the app only uses standard algorithms (age = X25519/ML-KEM/ChaCha20-Poly1305), so it qualifies for the exemption. Set `ITSAppUsesNonExemptEncryption = NO` once this is confirmed.
+  - Review notes must provide a demo store and a demo identity, because reviewers can't set up git or a desktop key. Ship a "Try with demo store" button in onboarding that generates a local store.
+  - App group, keychain access group and AutoFill capabilities on the paid team `D7DW22G9T5`. Bundle ID `de.nerdworks.passage`; extensions use `de.nerdworks.passage.<name>`, the App Group is `group.de.nerdworks.passage`, and the keychain access group is `D7DW22G9T5.de.nerdworks.passage.shared`.
+  - Licensing: adapted code from age-plugin-se (MIT) and the CCTV test vectors (CC0) need acknowledgements. libgit2 is GPLv2 with a linking exception, which is App Store compatible. libssh2 is BSD.
+- **Storage: both git and Files folder ship in v1** (§5).
+- **YubiKey ships in v1** (M8).
+- **Device testing goes through TestFlight.** There's no iPhone for local runs, so on-device checks (Secure Enclave, Face ID, AutoFill, NFC) are batched into TestFlight builds. Until then, Secure Enclave code is tested with `swift test` on an Apple-silicon Mac, which has a Secure Enclave too.
+
 ## 12. GitHub: making a GitHub-hosted store effortless
 
 Today the user has to create a token, or copy a public key into GitHub's settings by hand. The goal is: tap "Connect GitHub", approve in the browser, pick the repository, done. After that the app holds **no GitHub credential at all**, only a hardware-bound SSH key that can reach exactly one repository.
@@ -303,23 +323,3 @@ For users with no store yet:
 | G5 | Background refresh with cheap remote-head checks | G1 |
 
 **Open:** the GitHub App has to be registered under your account; it needs a name, a homepage, and device flow enabled. Its client ID is public and goes into the app. App Review: the demo store keeps working without GitHub, so review doesn't depend on a GitHub account.
-
-## 10. Risks and open questions
-
-- **Building libgit2 for iOS** (with SSH and TLS) is the biggest integration cost. If SwiftGitX doesn't fit, the fallback is our own xcframework script. HTTPS-only for v1 is an acceptable reduced scope.
-- ~~**CryptoKit X-Wing vs. age's `mlkem768x25519`**~~: resolved. CryptoKit's `XWingMLKEM768X25519` with `seedRepresentation` passes all the hybrid CCTV vectors and round-trips with `age -pq`.
-- **Post-quantum and classic recipients can't be mixed in one file** (age refuses). A store whose `.age-recipients` holds desktop X25519 keys therefore needs the device's `age1tag` recipient, not `age1tagpq`. The SE identity always has both a P-256 and an ML-KEM key, so it can decrypt either stanza type. Onboarding offers whichever recipient matches the store's existing recipients.
-- **SE-only users lose everything if they lose the device.** This is mitigated by the mandatory second recipient (§4).
-- **Plugin recipients** (other than `se`, `tag`, `yubikey`) can't run on iOS. Those folders are read-only, which needs clear UX.
-- **YubiKey in AutoFill**: NFC sessions work in extensions, but the UI is tight. This needs a prototype early in M8.
-
-## 11. Decisions
-
-- **Distribution: App Store.** Consequences:
-  - Export compliance: the app only uses standard algorithms (age = X25519/ML-KEM/ChaCha20-Poly1305), so it qualifies for the exemption. Set `ITSAppUsesNonExemptEncryption = NO` once this is confirmed.
-  - Review notes must provide a demo store and a demo identity, because reviewers can't set up git or a desktop key. Ship a "Try with demo store" button in onboarding that generates a local store.
-  - App group, keychain access group and AutoFill capabilities on the paid team `D7DW22G9T5`. Bundle ID `de.nerdworks.passage`; extensions use `de.nerdworks.passage.<name>`, the App Group is `group.de.nerdworks.passage`, and the keychain access group is `D7DW22G9T5.de.nerdworks.passage.shared`.
-  - Licensing: adapted code from age-plugin-se (MIT) and the CCTV test vectors (CC0) need acknowledgements. libgit2 is GPLv2 with a linking exception, which is App Store compatible. libssh2 is BSD.
-- **Storage: both git and Files folder ship in v1** (§5).
-- **YubiKey ships in v1** (M8).
-- **Device testing goes through TestFlight.** There's no iPhone for local runs, so on-device checks (Secure Enclave, Face ID, AutoFill, NFC) are batched into TestFlight builds. Until then, Secure Enclave code is tested with `swift test` on an Apple-silicon Mac, which has a Secure Enclave too.
