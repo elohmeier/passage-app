@@ -316,12 +316,12 @@ For users with no store yet:
 
 | # | Deliverable | Depends on |
 | --- | --- | --- |
-| G1 🟡 | GitHub App registration, device flow, repository picker, deploy key + SSH clone, token dropped | M4 (done) |
+| G1 ✅ | GitHub App registration, device flow, repository picker, deploy key + SSH clone, token dropped | M4 (done) |
 | G2 | Per-store SSH keys; "Close Store" removes the deploy key (re-auth) | G1 |
 | G3 | Commit the device recipient, readable-entries progress, desktop instructions | M5 (writes) |
 | G4 | Create a new store from the phone, recovery kit | G3 |
 | G5 | Background refresh with cheap remote-head checks | G1 |
 
-G1 status: `GitHubKit` (device flow, installations/repositories, contents probe, deploy keys) and the Connect GitHub sheet are built and tested against stubbed responses. Per-store SSH keys (G2's first half) are in. Waiting for the GitHub App registration (client ID + slug in `AppConfig`) to try it against github.com.
+G1 status: `GitHubKit` (device flow, installations/repositories, contents probe, deploy keys) and the Connect GitHub sheet are built and tested against stubbed responses. Per-store SSH keys (G2's first half) are in. Verified live in the Simulator against github.com on 2026-11-08: device flow sign-in, installation repositories, deploy key "Passage on <device>" (ecdsa-sha2-nistp256 from the Secure Enclave, read/write) added to a private test repo, SSH clone, decrypt, and a token-free SSH pull on relaunch. The GitHub App is https://github.com/apps/passage-for-ios (client ID in `AppConfig`, no client secret or private key exists). All GitHubKit traffic uses an ephemeral, cache-less URLSession: GitHub sends ETags on the token endpoint, and `URLSession.shared` answered device-flow polls from cache (and could have cached tokens on disk).
 
 **Open:** the GitHub App has to be registered under your account; it needs a name, a homepage, and device flow enabled. Its client ID is public and goes into the app. App Review: the demo store keeps working without GitHub, so review doesn't depend on a GitHub account.

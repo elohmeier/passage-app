@@ -1,4 +1,20 @@
 import Foundation
+import os
+
+let log = Logger(subsystem: "de.nerdworks.passage", category: "GitHub")
+
+extension URLSession {
+    /// No cache, no cookies, nothing on disk. URLSession.shared would cache responses (GitHub
+    /// sends ETags even for the token endpoint, so polls were answered from cache) and could
+    /// write OAuth tokens to the on-disk cache.
+    public static let gitHub: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        config.httpCookieStorage = nil
+        return URLSession(configuration: config)
+    }()
+}
 
 public enum GitHubError: Error, Equatable, Sendable, LocalizedError {
     case deviceFlowDisabled
@@ -50,7 +66,7 @@ public struct DeviceFlow: Sendable {
     let sleep: @Sendable (Duration) async throws -> Void
 
     public init(
-        clientID: String, session: URLSession = .shared,
+        clientID: String, session: URLSession = .gitHub,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     ) {
         self.clientID = clientID
@@ -77,6 +93,7 @@ public struct DeviceFlow: Sendable {
                 "https://github.com/login/oauth/access_token",
                 ["client_id": clientID, "device_code": code.deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"]))
             if let token = response.accessToken { return token }
+            log.info("device flow poll: \(response.error ?? "no error", privacy: .public)")
             switch response.error {
             case "authorization_pending": continue
             case "slow_down": interval = response.interval ?? interval + 5

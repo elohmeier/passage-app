@@ -47,7 +47,7 @@ public struct GitHubAPI: Sendable {
     let session: URLSession
     let base: URL
 
-    public init(token: String, session: URLSession = .shared, base: URL = URL(string: "https://api.github.com")!) {
+    public init(token: String, session: URLSession = .gitHub, base: URL = URL(string: "https://api.github.com")!) {
         self.token = token
         self.session = session
         self.base = base

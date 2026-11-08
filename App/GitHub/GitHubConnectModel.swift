@@ -26,6 +26,8 @@ final class GitHubConnectModel {
     }
 
     private(set) var step = Step.start
+    /// DEBUG automation: the view connects to this repository when set.
+    var autoPicked: GitHubAPI.Repository?
     private var token: String?
     private var pollTask: Task<Void, Never>?
     let clientID: String
@@ -96,6 +98,13 @@ final class GitHubConnectModel {
             }
             guard !repositories.isEmpty else {
                 step = .needsInstallation
+                #if DEBUG
+                    // Automation: keep checking while the app gets installed in the browser.
+                    if UserDefaults.standard.string(forKey: "PassageGitHubAutoPick") != nil {
+                        try? await Task.sleep(for: .seconds(5))
+                        await loadRepositories()
+                    }
+                #endif
                 return
             }
             // Probe for .age-recipients concurrently; a failed probe just means "unknown".
@@ -113,6 +122,13 @@ final class GitHubConnectModel {
                 if $0.looksLikeStore != $1.looksLikeStore { return $0.looksLikeStore }
                 return ($0.repository.pushedAt ?? .distantPast) > ($1.repository.pushedAt ?? .distantPast)
             })
+            #if DEBUG
+                if let name = UserDefaults.standard.string(forKey: "PassageGitHubAutoPick"),
+                    let pick = probed.first(where: { $0.repository.fullName == name })
+                {
+                    autoPicked = pick.repository
+                }
+            #endif
         } catch {
             step = .failed(error.localizedDescription)
         }

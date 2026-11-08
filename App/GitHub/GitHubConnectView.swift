@@ -30,6 +30,9 @@ struct GitHubConnectView: View {
         .onDisappear { model.finish() }
         #if DEBUG
             .onAppear { model.applyDebugStep() }
+            .onChange(of: model.autoPicked) { _, repo in
+                if let repo { Task { await connect(repo) } }
+            }
         #endif
         .alert(
             "\(confirmingPublic?.fullName ?? "") is public", isPresented: Binding(get: { confirmingPublic != nil }, set: { if !$0 { confirmingPublic = nil } }),
