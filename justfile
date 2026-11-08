@@ -23,12 +23,19 @@ update-testkit cctv="~/repos/github.com/C2SP/CCTV":
 screenshot name *args:
     scripts/sim-screenshot.sh {{name}} {{args}}
 
-# Archive a Release build and upload it to App Store Connect / TestFlight (needs Xcode signed in)
+# App Store Connect API key for uploads (not secret: key ID and issuer; the .p8 stays outside the repo)
+asc_key_path := env("ASC_KEY_PATH", env("HOME") / "Sync/iOS/AuthKey_HMVYBQ5S6S.p8")
+asc_key_id := env("ASC_KEY_ID", "HMVYBQ5S6S")
+asc_issuer_id := env("ASC_ISSUER_ID", "2aa57469-108d-4a05-a985-2e8965478c99")
+asc_auth := "-authenticationKeyPath '" + asc_key_path + "' -authenticationKeyID " + asc_key_id + " -authenticationKeyIssuerID " + asc_issuer_id
+
+# Archive a Release build and upload it to App Store Connect / TestFlight. Needs an Apple
+# Distribution certificate in the login keychain; signing and upload use the API key.
 testflight:
     rm -rf .build/Passage.xcarchive .build/export
     xcodebuild -project Passage.xcodeproj -scheme Passage -configuration Release -destination 'generic/platform=iOS' \
-        -archivePath .build/Passage.xcarchive -derivedDataPath .build/xcode-archive archive -allowProvisioningUpdates > .build/archive.log 2>&1 \
+        -archivePath .build/Passage.xcarchive -derivedDataPath .build/xcode-archive archive -allowProvisioningUpdates {{asc_auth}} > .build/archive.log 2>&1 \
         || (grep -E ": error: " .build/archive.log | sort -u; exit 1)
     # System PATH: Xcode's export breaks with Homebrew's rsync 3.x ("Copy failed").
     env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath .build/Passage.xcarchive -exportPath .build/export \
-        -exportOptionsPlist Config/ExportOptions.plist -allowProvisioningUpdates
+        -exportOptionsPlist Config/ExportOptions.plist -allowProvisioningUpdates {{asc_auth}}
