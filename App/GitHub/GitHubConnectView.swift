@@ -7,6 +7,7 @@ struct GitHubConnectView: View {
     @Environment(\.openURL) private var openURL
     @State private var model: GitHubConnectModel
     @State private var confirmingPublic: GitHubAPI.Repository?
+    @Environment(\.scenePhase) private var scenePhase
 
     init(clientID: String, appSlug: String) {
         _model = State(initialValue: GitHubConnectModel(clientID: clientID, appSlug: appSlug))
@@ -27,6 +28,14 @@ struct GitHubConnectView: View {
                 }
         }
         .interactiveDismissDisabled(isConnecting)
+        // Coming back from GitHub (installation changed in Safari): refresh the list.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            switch model.step {
+            case .pickRepository, .needsInstallation: Task { await model.loadRepositories() }
+            default: break
+            }
+        }
         .onDisappear { model.finish() }
         #if DEBUG
             .onAppear { model.applyDebugStep() }
@@ -123,8 +132,14 @@ struct GitHubConnectView: View {
                         }
                         .tint(.primary)
                     }
+                }
+                Section {
+                    // A real Link: Markdown links with an interpolated URL aren't tappable.
+                    Link(destination: model.installURL) {
+                        Label("Add a Repository on GitHub", systemImage: "plus.circle")
+                    }
                 } footer: {
-                    Text("Missing a repository? [Add it to the app's installation](\(model.installURL.absoluteString)), then pull to refresh.")
+                    Text("Missing a repository? Add it to the Passage app's installation on GitHub. The list updates when you come back.")
                 }
             }
             .refreshable { await model.loadRepositories() }
