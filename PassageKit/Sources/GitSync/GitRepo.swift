@@ -34,10 +34,10 @@ public actor GitRepo {
     /// Clones `remote` into `directory`, which must not exist or be empty.
     public static func clone(
         remote: String, into directory: URL, branch: String? = nil, credentials: GitCredentials = .none,
-        progress: (@Sendable (GitProgress) -> Void)? = nil
+        knownHosts: KnownHosts = KnownHosts(), progress: (@Sendable (GitProgress) -> Void)? = nil
     ) async throws(GitError) -> GitRepo {
         _ = GitSync.initialized
-        let ctx = CallbackContext(credentials: credentials, progress: progress)
+        let ctx = CallbackContext(credentials: credentials, knownHosts: knownHosts, progress: progress)
         var options = git_clone_options()
         try check(git_clone_options_init(&options, UInt32(GIT_CLONE_OPTIONS_VERSION)))
         ctx.install(into: &options.fetch_opts.callbacks)
@@ -54,7 +54,7 @@ public actor GitRepo {
             return git_clone(&repo, remote, directory.path, &options)
         }
         if code < 0 {
-            let error = GitError.last(code)
+            let error = ctx.error(code)
             // Don't leave a half-cloned directory behind.
             try? FileManager.default.removeItem(at: directory)
             throw error
@@ -90,24 +90,28 @@ public actor GitRepo {
     // MARK: Syncing
 
     /// Fetches `origin`.
-    public func fetch(credentials: GitCredentials, progress: (@Sendable (GitProgress) -> Void)? = nil) throws(GitError) {
+    public func fetch(
+        credentials: GitCredentials, knownHosts: KnownHosts = KnownHosts(), progress: (@Sendable (GitProgress) -> Void)? = nil
+    ) throws(GitError) {
         var remote: OpaquePointer?
         try check(git_remote_lookup(&remote, repo, "origin"))
         defer { git_remote_free(remote) }
 
-        let ctx = CallbackContext(credentials: credentials, progress: progress)
+        let ctx = CallbackContext(credentials: credentials, knownHosts: knownHosts, progress: progress)
         var options = git_fetch_options()
         try check(git_fetch_options_init(&options, UInt32(GIT_FETCH_OPTIONS_VERSION)))
         ctx.install(into: &options.callbacks)
         options.prune = GIT_FETCH_PRUNE
         let code = withExtendedLifetime(ctx) { git_remote_fetch(remote, nil, &options, nil) }
-        try check(code)
+        if code < 0 { throw ctx.error(code) }
     }
 
     /// Fetches and fast-forwards the current branch to its upstream. Throws `.diverged` if
     /// both sides have new commits (merging is a later milestone).
-    public func pull(credentials: GitCredentials, progress: (@Sendable (GitProgress) -> Void)? = nil) throws(GitError) -> PullResult {
-        try fetch(credentials: credentials, progress: progress)
+    public func pull(
+        credentials: GitCredentials, knownHosts: KnownHosts = KnownHosts(), progress: (@Sendable (GitProgress) -> Void)? = nil
+    ) throws(GitError) -> PullResult {
+        try fetch(credentials: credentials, knownHosts: knownHosts, progress: progress)
 
         var head: OpaquePointer?
         try check(git_repository_head(&head, repo))

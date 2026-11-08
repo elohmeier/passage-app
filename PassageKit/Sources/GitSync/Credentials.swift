@@ -6,6 +6,8 @@ public enum GitCredentials: Sendable, Equatable {
     case none
     /// HTTPS basic auth. For GitHub/GitLab/Gitea, the password is a personal access token.
     case userPassword(username: String, password: String)
+    /// SSH public key auth. The username defaults to the one in the URL, then `git`.
+    case ssh(username: String?, key: SSHKey)
 }
 
 /// Transfer progress, reported while fetching.
@@ -26,14 +28,33 @@ public struct GitProgress: Sendable, Equatable {
 /// State shared with libgit2's C callbacks through the `payload` pointer.
 final class CallbackContext {
     let credentials: GitCredentials
+    let knownHosts: KnownHosts
     let progress: (@Sendable (GitProgress) -> Void)?
     var credentialAttempts = 0
     var cancelled: () -> Bool
+    /// Set by the SSH transport so a failure can be reported with its real cause.
+    var sshFailure: SSHFailure?
 
-    init(credentials: GitCredentials, progress: (@Sendable (GitProgress) -> Void)?, cancelled: @escaping () -> Bool = { Task.isCancelled }) {
+    init(
+        credentials: GitCredentials, knownHosts: KnownHosts = KnownHosts(), progress: (@Sendable (GitProgress) -> Void)?,
+        cancelled: @escaping () -> Bool = { Task.isCancelled }
+    ) {
         self.credentials = credentials
+        self.knownHosts = knownHosts
         self.progress = progress
         self.cancelled = cancelled
+    }
+
+    /// Turns a failed libgit2 call into a `GitError`, preferring the SSH transport's cause.
+    func error(_ code: Int32) -> GitError {
+        switch sshFailure {
+        case .hostKey(let key, let status)?:
+            GitError(kind: status == .mismatch ? .hostKeyChanged(key) : .unknownHostKey(key), message: "host key for \(key.host) is not trusted")
+        case .authentication?: GitError(kind: .authentication, message: "the server rejected the SSH key")
+        case .remote(let message)?: GitError(kind: .other, message: message)
+        case .timeout?, .connection?: GitError(kind: .network, message: "\(sshFailure!)")
+        case nil: GitError.last(code)
+        }
     }
 
     /// Fills `callbacks` with our C callbacks. The context must outlive the operation.

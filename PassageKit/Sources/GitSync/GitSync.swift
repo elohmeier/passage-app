@@ -5,6 +5,7 @@ public enum GitSync {
     /// libgit2 must be initialized once per process before use.
     static let initialized: Void = {
         git_libgit2_init()
+        _ = SSHTransport.registered
     }()
 
     public static var libgit2Version: String {
@@ -21,6 +22,10 @@ public struct GitError: Error, LocalizedError, Equatable, Sendable {
         case diverged
         case uncommittedChanges
         case network
+        /// First connection to an SSH host: show the fingerprint and ask the user.
+        case unknownHostKey(HostKey)
+        /// The host presented a different key than the one we trust.
+        case hostKeyChanged(HostKey)
         case other
     }
 
@@ -33,6 +38,9 @@ public struct GitError: Error, LocalizedError, Equatable, Sendable {
         case .authentication: "Authentication failed: \(message)"
         case .diverged: "Your local copy and the remote have both changed. Merging comes in a later version."
         case .uncommittedChanges: "The local copy has changes that would be overwritten."
+        case .unknownHostKey(let key): "The authenticity of \(key.host) can't be established. Its \(key.algorithm) key fingerprint is \(key.fingerprint)."
+        case .hostKeyChanged(let key):
+            "The host key of \(key.host) has changed (now \(key.fingerprint)). Someone could be intercepting the connection, or the server was re-keyed."
         default: message
         }
     }

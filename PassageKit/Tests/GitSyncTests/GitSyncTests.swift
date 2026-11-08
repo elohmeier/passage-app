@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import NIOSSH
 import Synchronization
 import Testing
 
@@ -126,5 +128,109 @@ struct Fixture {
         #expect(try await repo.headCommit().id.count == 40)
         #expect(progress.withLock { $0.last?.fraction } == 1)
         #expect(try await repo.pull(credentials: .none) == .upToDate)
+    }
+}
+
+@Suite struct SSHURLTests {
+    @Test func parses() {
+        #expect(SSHURL("git@github.com:alice/pass.git") == SSHURL(user: "git", host: "github.com", port: 22, path: "alice/pass.git"))
+        #expect(SSHURL("ssh://git@example.com:2222/srv/pass.git") == SSHURL(user: "git", host: "example.com", port: 2222, path: "/srv/pass.git"))
+        #expect(SSHURL("ssh://example.com/~/pass.git")?.path == "~/pass.git")
+        #expect(SSHURL("example.com:pass")?.user == nil)
+        #expect(SSHURL("nohost") == nil)
+    }
+}
+
+@Suite struct KnownHostsTests {
+    /// Must match https://api.github.com/meta `ssh_key_fingerprints`.
+    @Test func pinnedGitHubFingerprints() {
+        let fingerprints = Set(KnownHosts.pinned.map(\.fingerprint))
+        #expect(fingerprints == ["SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU", "SHA256:p2QAMXNIC1TJYWeIOttrVc98/R1BUFWu3/LiyKgUfQM"])
+    }
+
+    @Test func status() {
+        var hosts = KnownHosts()
+        let key = HostKey(host: "example.com", key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl")
+        #expect(hosts.status(of: key) == .unknown)
+        hosts.trust(key)
+        #expect(hosts.status(of: key) == .trusted)
+        #expect(hosts.status(of: HostKey(host: "example.com", key: "ssh-ed25519 AAAAother")) == .mismatch)
+        #expect(hosts.status(of: HostKey(host: "github.com", key: "ssh-ed25519 AAAAevil")) == .mismatch, "pinned host")
+    }
+}
+
+/// Clones and pulls over SSH through our transport, against an in-process swift-nio-ssh server.
+@Suite(.serialized) struct SSHTransportTests {
+    let fx: Fixture
+    let clone: URL
+    let key = SSHKey.generateEd25519()
+    let server: SSHTestServer
+
+    init() throws {
+        fx = try Fixture()
+        clone = fx.dir.appending(path: "clone")
+        server = try SSHTestServer(authorizedKey: try key.privateKey().publicKey)
+    }
+
+    var url: String { "ssh://git@127.0.0.1:\(server.port)\(fx.origin.path)" }
+    var serverKey: HostKey { HostKey(host: "[127.0.0.1]:\(server.port)", key: server.hostKey.publicKey) }
+
+    @Test func unknownHostKeyIsReportedWithFingerprint() async throws {
+        defer { server.stop() }
+        do {
+            _ = try await GitRepo.clone(remote: url, into: clone, credentials: .ssh(username: nil, key: key))
+            Issue.record("expected an unknown host key error")
+        } catch {
+            #expect(error.kind == .unknownHostKey(serverKey))
+            #expect(error.localizedDescription.contains(serverKey.fingerprint))
+        }
+        #expect(!FileManager.default.fileExists(atPath: clone.path))
+    }
+
+    @Test func cloneAndPullWithTrustedHost() async throws {
+        defer { server.stop() }
+        let hosts = KnownHosts([serverKey])
+        let repo = try await GitRepo.clone(remote: url, into: clone, credentials: .ssh(username: nil, key: key), knownHosts: hosts)
+        #expect(try await repo.headCommit().summary == "Edit bank.age")
+
+        try fx.commit("email/alice.age", "new")
+        try fx.push()
+        guard case .fastForwarded = try await repo.pull(credentials: .ssh(username: nil, key: key), knownHosts: hosts) else {
+            Issue.record("expected fast-forward")
+            return
+        }
+        #expect(FileManager.default.fileExists(atPath: clone.appending(path: "email/alice.age").path))
+    }
+
+    @Test func wrongKeyIsAnAuthenticationError() async throws {
+        defer { server.stop() }
+        await #expect(throws: GitError(kind: .authentication, message: "the server rejected the SSH key")) {
+            try await GitRepo.clone(
+                remote: url, into: clone, credentials: .ssh(username: nil, key: .generateEd25519()), knownHosts: KnownHosts([serverKey]))
+        }
+    }
+
+    @Test func secureEnclaveKey() async throws {
+        defer { server.stop() }
+        guard SecureEnclave.isAvailable else { return }
+        let seKey = try SSHKey.generateSecureEnclave()
+        let seServer = try SSHTestServer(authorizedKey: try seKey.privateKey().publicKey)
+        defer { seServer.stop() }
+        let hostKey = HostKey(host: "[127.0.0.1]:\(seServer.port)", key: seServer.hostKey.publicKey)
+        let repo = try await GitRepo.clone(
+            remote: "ssh://git@127.0.0.1:\(seServer.port)\(fx.origin.path)", into: clone,
+            credentials: .ssh(username: nil, key: seKey), knownHosts: KnownHosts([hostKey]))
+        #expect(try await repo.headCommit().id.count == 40)
+        #expect(try seKey.publicKeyLine(comment: "iPhone").hasPrefix("ecdsa-sha2-nistp256 AAAA"))
+    }
+}
+
+/// Against github.com: the pinned host key must verify, and an unregistered key must be
+/// rejected as an authentication failure. Opt in with GITSYNC_NETWORK_TESTS=1.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["GITSYNC_NETWORK_TESTS"] == "1"))
+func gitHubSSHHostKeyIsPinned() async throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "gh-\(UUID().uuidString)")
+    await #expect(throws: GitError(kind: .authentication, message: "the server rejected the SSH key")) {
+        try await GitRepo.clone(remote: "git@github.com:FiloSottile/passage.git", into: dir, credentials: .ssh(username: nil, key: .generateEd25519()))
     }
 }

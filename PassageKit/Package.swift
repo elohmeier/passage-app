@@ -55,6 +55,11 @@ let package = Package(
         .library(name: "PassStore", targets: ["PassStore"]),
         .library(name: "GitSync", targets: ["GitSync"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.105.0"),
+        .package(url: "https://github.com/apple/swift-nio-ssh.git", exact: "0.15.1"),
+        .package(url: "https://github.com/apple/swift-nio-transport-services.git", from: "1.28.0"),
+    ],
     targets: [
         .target(name: "AgeCrypto"),
         .target(name: "KeyStore", dependencies: ["AgeCrypto"]),
@@ -62,7 +67,14 @@ let package = Package(
         .target(
             name: "CGit2", path: "Vendor/libgit2", exclude: libgit2Exclude, sources: libgit2Sources,
             publicHeadersPath: "include", cSettings: libgit2Settings, linkerSettings: [.linkedLibrary("iconv")]),
-        .target(name: "GitSync", dependencies: ["CGit2"]),
+        .target(
+            name: "GitSync",
+            dependencies: [
+                "CGit2",
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOSSH", package: "swift-nio-ssh"),
+                .product(name: "NIOTransportServices", package: "swift-nio-transport-services"),
+            ]),
         .testTarget(
             name: "AgeCryptoTests",
             dependencies: ["AgeCrypto"],
@@ -70,6 +82,12 @@ let package = Package(
         ),
         .testTarget(name: "KeyStoreTests", dependencies: ["KeyStore"]),
         .testTarget(name: "PassStoreTests", dependencies: ["PassStore"]),
-        .testTarget(name: "GitSyncTests", dependencies: ["GitSync"]),
+        .testTarget(
+            name: "GitSyncTests",
+            dependencies: [
+                "GitSync",
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOSSH", package: "swift-nio-ssh"),
+            ]),
     ]
 )
