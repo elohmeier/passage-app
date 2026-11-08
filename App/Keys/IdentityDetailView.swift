@@ -33,11 +33,11 @@ struct IdentityDetailView: View {
                 QRCodeView(text: recipient)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical)
+                // One line: wrapping would insert hyphens that aren't part of the key.
                 Text(recipient)
                     .font(.caption.monospaced())
-                    .lineLimit(4)
+                    .lineLimit(1)
                     .truncationMode(.middle)
-                    .textSelection(.enabled)
                 HStack {
                     Button("Copy", systemImage: "doc.on.doc") {
                         UIPasteboard.general.string = recipient
@@ -81,7 +81,7 @@ extension KeyProtection {
         switch self {
         case .biometryCurrentSet: "Face ID / Touch ID (current enrollment)"
         case .userPresence: "Face ID / Touch ID or passcode"
-        case .none: "None"
+        case .unprotected: "None"
         }
     }
 }

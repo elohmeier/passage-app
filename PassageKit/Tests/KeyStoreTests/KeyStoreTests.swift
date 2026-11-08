@@ -9,7 +9,7 @@ import Testing
 
 let message = Data("hunter2\nusername: alice\n".utf8)
 
-/// Uses the real Secure Enclave (Apple-silicon Macs). `.none` protection avoids Touch ID
+/// Uses the real Secure Enclave (Apple-silicon Macs). `.unprotected` protection avoids Touch ID
 /// prompts; access control itself is only verifiable on a device.
 @Suite(.enabled(if: SecureEnclave.isAvailable, "needs a Secure Enclave"))
 struct SecureEnclaveIdentityTests {
@@ -17,7 +17,7 @@ struct SecureEnclaveIdentityTests {
     var store: IdentityStore { IdentityStore(store: secrets) }
 
     @Test func deviceIdentityDecryptsBothRecipientTypes() throws {
-        let created = try store.createDeviceIdentity(name: "iPhone", protection: .none)
+        let created = try store.createDeviceIdentity(name: "iPhone", protection: .unprotected)
         #expect(created.kind == .secureEnclave)
         #expect(created.recipients.count == 2)
         #expect(created.recipients[0].hasPrefix("age1tag1"))
@@ -41,7 +41,7 @@ struct SecureEnclaveIdentityTests {
         let x = X25519Identity()
         let pq = try HybridIdentity()
         let imported = try store.importIdentities(
-            "# from desktop\n\(x.encoded)\n\n\(pq.encoded)\n", name: "Desktop", protection: .none)
+            "# from desktop\n\(x.encoded)\n\n\(pq.encoded)\n", name: "Desktop", protection: .unprotected)
         #expect(imported.map(\.name) == ["Desktop 1", "Desktop 2"])
         #expect(imported.map(\.recipients) == [[x.recipient.encoded], [pq.recipient.encoded]])
 
@@ -59,14 +59,14 @@ struct SecureEnclaveIdentityTests {
     @Test func invalidImportStoresNothing() throws {
         let good = X25519Identity().encoded
         #expect(throws: KeyStoreError.self) {
-            try store.importIdentities("\(good)\nAGE-PLUGIN-YUBIKEY-1QQQQQQ\n", name: "x", protection: .none)
+            try store.importIdentities("\(good)\nAGE-PLUGIN-YUBIKEY-1QQQQQQ\n", name: "x", protection: .unprotected)
         }
         #expect(secrets.keys.isEmpty)
     }
 
     @Test func deleteRemovesKeyMaterial() throws {
-        let a = try store.createDeviceIdentity(name: "a", protection: .none)
-        let b = try store.importIdentities(X25519Identity().encoded, name: "b", protection: .none)[0]
+        let a = try store.createDeviceIdentity(name: "a", protection: .unprotected)
+        let b = try store.importIdentities(X25519Identity().encoded, name: "b", protection: .unprotected)[0]
         try store.delete(b.id)
         #expect(try store.list() == [a])
         #expect(secrets.keys.allSatisfy { $0 == "index" || $0.hasPrefix(a.id.uuidString) })
@@ -75,7 +75,7 @@ struct SecureEnclaveIdentityTests {
     }
 
     @Test func renamePersists() throws {
-        let a = try store.createDeviceIdentity(name: "a", protection: .none)
+        let a = try store.createDeviceIdentity(name: "a", protection: .unprotected)
         try store.rename(a.id, to: "Enno's iPhone")
         #expect(try store.list().map(\.name) == ["Enno's iPhone"])
     }
@@ -129,7 +129,7 @@ final class FakeClock: Sendable {
 
     @Test func unprotectedKeysNeedNoPrompt() async throws {
         let m = manager(.everyTime)
-        #expect(try await m.context(for: [.none], reason: "test") == nil)
+        #expect(try await m.context(for: [.unprotected], reason: "test") == nil)
         #expect(auth.count == 0)
     }
 
@@ -213,9 +213,9 @@ struct DecryptTests {
 
     @Test func decryptsWithUnprotectedKeys() async throws {
         let store = IdentityStore(store: secrets)
-        let device = try store.createDeviceIdentity(name: "iPhone", protection: .none)
+        let device = try store.createDeviceIdentity(name: "iPhone", protection: .unprotected)
         let x = X25519Identity()
-        _ = try store.importIdentities(x.encoded, name: "Desktop", protection: .none)
+        _ = try store.importIdentities(x.encoded, name: "Desktop", protection: .unprotected)
         let sessions = UnlockSessionManager(policy: .everyTime, authenticator: auth)
 
         let toDevice = try Age.encrypt(message, to: [RecipientParser.parse(device.recipients[1])])

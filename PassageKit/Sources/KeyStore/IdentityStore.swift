@@ -114,7 +114,7 @@ public final class IdentityStore: Sendable {
                     throw .accessControl("key generation failed: \(error.localizedDescription)")
                 }
                 let blob = SoftwareKeyBlob(p256: key.p256RawRepresentation, mlkemSeed: key.mlkemSeed!)
-                try store.set(blob.encoded, for: "\(id).software", accessControl: protection == .none ? nil : protection.keychainAccessControl())
+                try store.set(blob.encoded, for: "\(id).software", accessControl: protection == .unprotected ? nil : protection.keychainAccessControl())
                 tag = TagIdentity(key: key)
                 kind = .simulator
             #else
@@ -169,7 +169,7 @@ public final class IdentityStore: Sendable {
                 try store.set(ciphertext, for: "\(id).secret", accessControl: nil)
             } else {
                 #if targetEnvironment(simulator)
-                    try store.set(Data(secret.utf8), for: "\(id).secret", accessControl: protection == .none ? nil : protection.keychainAccessControl())
+                    try store.set(Data(secret.utf8), for: "\(id).secret", accessControl: protection == .unprotected ? nil : protection.keychainAccessControl())
                 #else
                     throw .secureEnclaveUnavailable
                 #endif

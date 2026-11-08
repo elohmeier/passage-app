@@ -1,4 +1,6 @@
+import AgeCrypto
 import Foundation
+import KeyStore
 import Observation
 import PassStore
 
@@ -41,6 +43,21 @@ final class StoreModel {
             let (access, bookmark) = try FolderAccess.open(pickedURL: url)
             defaults.set(bookmark, forKey: Self.bookmarkKey)
             attach(access)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Creates the demo store, encrypted to this device's key (creating one if needed), and
+    /// opens it.
+    func openDemoStore(using model: AppModel, protection: KeyStore.KeyProtection? = nil) {
+        guard let device = model.deviceIdentity ?? model.createDeviceIdentity(name: "This Device", protection: protection) else { return }
+        do {
+            let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConfig.appGroup)
+                ?? URL.applicationSupportDirectory
+            let root = base.appending(path: "Demo Store", directoryHint: .isDirectory)
+            try DemoStore.create(at: root, recipients: [RecipientParser.parse(device.recommendedRecipient(alongside: []))])
+            open(pickedURL: root)
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -10,6 +10,7 @@ enum Route: Hashable {
 }
 
 struct BrowserView: View {
+    @Environment(AppModel.self) private var model
     @Environment(StoreModel.self) private var store
     @State private var path = NavigationPath()
     @State private var query = ""
@@ -36,6 +37,9 @@ struct BrowserView: View {
                     }
                 }
             }
+            #if DEBUG
+                .onAppear(perform: applyDebugRoute)
+            #endif
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case .folder(let f): FolderView(folder: f)
@@ -48,6 +52,31 @@ struct BrowserView: View {
         }
     }
 }
+
+#if DEBUG
+    extension BrowserView {
+        /// `-PassageRoute entry:path`, `folder:path`, `search:query`, `keys` or `settings`.
+        fileprivate func applyDebugRoute() {
+            guard path.isEmpty, let route = UserDefaults.standard.string(forKey: "PassageRoute") else { return }
+            let (kind, arg) = route.split(separator: ":", maxSplits: 1).map(String.init).splitFirst()
+            switch kind {
+            case "entry": path.append(Route.entry(EntryPath(arg)))
+            case "folder": path.append(Route.folder(arg))
+            case "search": query = arg
+            case "keys": path.append(Route.keys)
+            case "identity":
+                path.append(Route.keys)
+                if let device = model.deviceIdentity { path.append(device) }
+            case "settings": path.append(Route.settings)
+            default: break
+            }
+        }
+    }
+
+    extension Array where Element == String {
+        fileprivate func splitFirst() -> (String, String) { (first ?? "", count > 1 ? self[1] : "") }
+    }
+#endif
 
 struct FolderView: View {
     @Environment(StoreModel.self) private var store

@@ -183,3 +183,17 @@ import Testing
         }
     }
 }
+
+@Suite struct DemoStoreTests {
+    @Test func createsDecryptableStore() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "demo-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let id = X25519Identity()
+        try DemoStore.create(at: root, recipients: [id.recipient])
+        let store = LocalStore(root: root)
+        let snapshot = try await store.snapshot()
+        #expect(snapshot.entries.count == DemoStore.entries.count)
+        let mastodon = Entry(String(decoding: try Age.decrypt(await store.read(EntryPath("social/mastodon")), identities: [id]), as: UTF8.self))
+        #expect(mastodon.otp != nil)
+        #expect(try await store.recipients(for: EntryPath("home/wifi")).map(\.encoded) == [id.recipient.encoded])
+    }
+}

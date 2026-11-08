@@ -10,7 +10,7 @@ public enum KeyProtection: String, Codable, Sendable, CaseIterable {
     /// Face ID / Touch ID, or the device passcode as a fallback.
     case userPresence
     /// No user authentication. Only for tests and the demo store.
-    case none
+    case unprotected
 
     /// Flags for a key that lives in the Secure Enclave.
     func secureEnclaveAccessControl() throws(KeyStoreError) -> SecAccessControl {
@@ -28,7 +28,7 @@ public enum KeyProtection: String, Codable, Sendable, CaseIterable {
         switch self {
         case .biometryCurrentSet: .deviceOwnerAuthenticationWithBiometrics
         case .userPresence: .deviceOwnerAuthentication
-        case .none: nil
+        case .unprotected: nil
         }
     }
 
@@ -36,13 +36,13 @@ public enum KeyProtection: String, Codable, Sendable, CaseIterable {
         switch self {
         case .biometryCurrentSet: .biometryCurrentSet
         case .userPresence: .userPresence
-        case .none: []
+        case .unprotected: []
         }
     }
 
     private func make(flags: SecAccessControlCreateFlags) throws(KeyStoreError) -> SecAccessControl {
         // Keys requiring user presence also disappear if the device passcode is removed.
-        let accessibility = self == .none ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly : kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
+        let accessibility = self == .unprotected ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly : kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly
         var error: Unmanaged<CFError>?
         guard let ac = SecAccessControlCreateWithFlags(nil, accessibility, flags, &error) else {
             throw .accessControl(error?.takeRetainedValue().localizedDescription ?? "unknown error")

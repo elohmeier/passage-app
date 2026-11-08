@@ -145,6 +145,7 @@ private struct ValueRow: View {
                 Text(value).foregroundStyle(.primary)
             }
         }
+        .tint(.primary)
         .contextMenu {
             Button("Copy", systemImage: "doc.on.doc") { copy(label, value) }
             if let url = URL(string: value), url.scheme == "https" || url.scheme == "http" {
@@ -173,6 +174,7 @@ private struct SecretRow: View {
                         .privacySensitive()
                 }
             }
+            .tint(.primary)
             Spacer()
             Button(revealed ? "Hide" : "Show", systemImage: revealed ? "eye.slash" : "eye") { revealed.toggle() }
                 .labelStyle(.iconOnly)
@@ -215,6 +217,7 @@ private struct OTPRow: View {
                     }
                 }
             }
+            .tint(.primary)
         }
     }
 }

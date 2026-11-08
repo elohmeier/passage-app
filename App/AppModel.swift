@@ -1,6 +1,7 @@
 import AgeCrypto
 import Foundation
 import KeyStore
+import LocalAuthentication
 import Observation
 
 enum AppConfig {
@@ -86,9 +87,16 @@ final class AppModel {
         attempt { identities = try identityStore.list() }
     }
 
-    func createDeviceIdentity(name: String) {
-        attempt { _ = try identityStore.createDeviceIdentity(name: name, protection: .biometryCurrentSet) }
+    /// Creates this device's key. Biometry-only if Face ID / Touch ID is set up, otherwise
+    /// biometry or passcode, so the key is usable on devices without enrolled biometry.
+    @discardableResult
+    func createDeviceIdentity(name: String, protection: KeyProtection? = nil) -> StoredIdentity? {
+        let protection = protection ?? (LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+            ? .biometryCurrentSet : .userPresence)
+        var created: StoredIdentity?
+        attempt { created = try identityStore.createDeviceIdentity(name: name, protection: protection) }
         reload()
+        return created
     }
 
     func importIdentities(_ text: String, name: String, protection: KeyProtection) -> Bool {

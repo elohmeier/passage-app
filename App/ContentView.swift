@@ -22,14 +22,23 @@ struct WelcomeView: View {
         NavigationStack {
             List {
                 Section {
-                    ContentUnavailableView {
-                        Label("No Password Store", systemImage: "lock.rectangle.stack")
-                    } description: {
+                    VStack(spacing: 12) {
+                        Image(systemName: "lock.rectangle.stack")
+                            .font(.system(size: 52))
+                            .foregroundStyle(.tint)
+                        Text("No Password Store")
+                            .font(.title2.bold())
                         Text("Open the folder that contains your passage store, for example in iCloud Drive or another Files location.")
-                    } actions: {
-                        Button("Open Folder…", systemImage: "folder") { showingPicker = true }
-                            .buttonStyle(.borderedProminent)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical)
+                    .listRowBackground(Color.clear)
+                }
+                Section {
+                    Button("Open Folder…", systemImage: "folder") { showingPicker = true }
+                    Button("Try Demo Store", systemImage: "sparkles") { store.openDemoStore(using: model) }
                 }
                 Section {
                     NavigationLink {

@@ -11,7 +11,17 @@ struct PassageApp: App {
             ContentView()
                 .environment(model)
                 .environment(store)
-                .onAppear { store.restore() }
+                .onAppear {
+                    #if DEBUG
+                        // Screenshot/automation hook: `-PassageDemo YES` opens the demo store with an
+                        // unprotected key (the Simulator can't answer Face ID prompts unattended).
+                        if UserDefaults.standard.bool(forKey: "PassageDemo"), store.store == nil {
+                            store.openDemoStore(using: model, protection: .unprotected)
+                            return
+                        }
+                    #endif
+                    store.restore()
+                }
                 // Hide content in the app switcher.
                 .overlay {
                     if scenePhase != .active {

@@ -206,7 +206,7 @@ CryptoKit.
 | M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
 
-M2/M3 status: the code is done and tested on the Mac (`swift test`, including its Secure Enclave). On-device verification is pending the first TestFlight build (checklist below). No iOS Simulator runtime is installed, so the UI has only been compiled, not run.
+M2/M3 status: the code is done and tested on the Mac (`swift test`, including its Secure Enclave). On-device verification is pending the first TestFlight build (checklist below). The UI is checked in the iOS 27 Simulator (`just screenshot <name> -PassageDemo YES -PassageRoute …`). The Simulator emulates the Secure Enclave, so the real key path runs there too, but with unprotected demo keys because it can't answer Face ID prompts unattended.
 
 v1 = M0 through M9. All three of git, Files folder and YubiKey ship in v1.
 
