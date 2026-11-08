@@ -235,3 +235,55 @@ struct DecryptTests {
         #expect(auth.count == 0)
     }
 }
+
+/// The YubiKey path, with a software P-256 key standing in for the card's PIV slot.
+@Suite(.enabled(if: SecureEnclave.isAvailable, "needs a Secure Enclave"))
+struct YubiKeyTests {
+    let secrets = InMemorySecretStore()
+    let card = P256.KeyAgreement.PrivateKey()
+    final class Counter: Sendable { let value = Mutex(0) }
+    let counter = Counter()
+
+    var hardware: HardwareKeyAgreement {
+        { [card, counter] _, share in
+            counter.value.withLock { $0 += 1 }
+            return try card.sharedSecretFromKeyAgreement(with: share).withUnsafeBytes { Data($0) }
+        }
+    }
+
+    func addCard(_ store: IdentityStore) throws -> StoredIdentity {
+        try store.addYubiKey(.init(serial: 12345678, slot: 0x82, publicKey: card.publicKey.x963Representation), name: "YubiKey 5C NFC")
+    }
+
+    @Test(arguments: [0, 1])
+    func decryptsBothRecipientForms(form: Int) async throws {
+        let store = IdentityStore(store: secrets)
+        let yubikey = try addCard(store)
+        #expect(yubikey.recipients[0].hasPrefix("age1yubikey1") && yubikey.recipients[1].hasPrefix("age1tag1"))
+        #expect(try addCard(store).id == yubikey.id, "adding the same slot twice is a no-op")
+
+        let ct = try Age.encrypt(message, to: [RecipientParser.parse(yubikey.recipients[form])])
+        let sessions = UnlockSessionManager(policy: .everyTime, authenticator: FakeAuthenticator())
+        #expect(try await store.decrypt(ct, sessions: sessions, reason: "t", hardware: hardware) == message)
+        #expect(counter.value.withLock { $0 } == 1)
+    }
+
+    @Test func prefersTheDeviceKey() async throws {
+        let store = IdentityStore(store: secrets)
+        let device = try store.createDeviceIdentity(name: "iPhone", protection: .unprotected)
+        let yubikey = try addCard(store)
+        let ct = try Age.encrypt(message, to: [RecipientParser.parse(device.recipients[0]), RecipientParser.parse(yubikey.recipients[1])])
+        let sessions = UnlockSessionManager(policy: .everyTime, authenticator: FakeAuthenticator())
+        #expect(try await store.decrypt(ct, sessions: sessions, reason: "t", hardware: hardware) == message)
+        #expect(counter.value.withLock { $0 } == 0, "no YubiKey tap when the device key works")
+    }
+
+    @Test func notAskedForOtherFiles() async throws {
+        let store = IdentityStore(store: secrets)
+        _ = try addCard(store)
+        let ct = try Age.encrypt(message, to: [X25519Identity().recipient])
+        let sessions = UnlockSessionManager(policy: .everyTime, authenticator: FakeAuthenticator())
+        await #expect(throws: AgeError.self) { try await store.decrypt(ct, sessions: sessions, reason: "t", hardware: hardware) }
+        #expect(counter.value.withLock { $0 } == 0)
+    }
+}

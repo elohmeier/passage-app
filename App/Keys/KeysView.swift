@@ -4,6 +4,7 @@ import SwiftUI
 struct KeysView: View {
     @Environment(AppModel.self) private var model
     @State private var showingImport = false
+    @State private var showingYubiKey = false
     @State private var pendingDelete: StoredIdentity?
 
     var body: some View {
@@ -24,6 +25,24 @@ struct KeysView: View {
                 Text("Created in the Secure Enclave. It can't be exported, so make sure your store has another recipient you can recover with.")
             }
 
+            Section {
+                ForEach(model.identities.filter { $0.kind == .yubikey }) { identity in
+                    NavigationLink { IdentityDetailView(identity: identity) } label: { IdentityRow(identity: identity) }
+                        .swipeActions {
+                            Button("Delete", role: .destructive) { pendingDelete = identity }
+                        }
+                }
+                Button {
+                    showingYubiKey = true
+                } label: {
+                    Label("Add YubiKey…", systemImage: "key.radiowaves.forward")
+                }
+            } header: {
+                Text("YubiKeys")
+            } footer: {
+                Text("Keys created with age-plugin-yubikey. Decrypting asks you to tap or plug in the YubiKey. Not available in AutoFill, where iOS doesn't allow NFC.")
+            }
+
             Section("Imported") {
                 ForEach(model.identities.filter { $0.kind == .imported }) { identity in
                     NavigationLink { IdentityDetailView(identity: identity) } label: { IdentityRow(identity: identity) }
@@ -40,6 +59,7 @@ struct KeysView: View {
         }
         .navigationTitle("Keys")
         .sheet(isPresented: $showingImport) { ImportIdentityView() }
+        .sheet(isPresented: $showingYubiKey) { AddYubiKeyView() }
         .confirmationDialog(
             "Delete \(pendingDelete?.name ?? "")?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
             titleVisibility: .visible
@@ -72,6 +92,7 @@ extension StoredIdentity {
         case .secureEnclave: "Secure Enclave"
         case .imported: recipients.first?.hasPrefix("age1pq1") == true ? "Imported, post-quantum" : "Imported"
         case .simulator: "Simulator (not hardware-protected)"
+        case .yubikey: yubiKey.map { "YubiKey \(String($0.serial)), slot \(String(format: "%02X", $0.slot))" } ?? "YubiKey"
         }
     }
 }

@@ -5,6 +5,9 @@ import SwiftUI
 @main
 struct PassageApp: App {
     init() {
+        PassageEnvironment.model.hardwareKeyAgreement = { identity, share in
+            try await YubiKeyService.shared.keyAgreement(for: identity, share: share)
+        }
         StoreModel.beginBackgroundTask = {
             let id = UIApplication.shared.beginBackgroundTask(withName: "Sync")
             return { UIApplication.shared.endBackgroundTask(id) }
@@ -75,6 +78,7 @@ struct PassageApp: App {
                 } message: {
                     Text(model.errorMessage ?? "")
                 }
+                .modifier(PINPrompt(service: YubiKeyService.shared))
                 .alert(
                     "Conflicting Edits", isPresented: Binding(get: { !store.conflictCopies.isEmpty }, set: { if !$0 { store.conflictCopies = [] } })
                 ) {
@@ -92,7 +96,9 @@ struct PassageApp: App {
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
-            case .background: model.lock()
+            case .background:
+                model.lock()
+                YubiKeyService.shared.forgetPIN()
             // Pick up changes from other devices whenever the app comes back.
             case .active where store.gitConfig != nil: Task { await store.sync(.automatic) }
             default: break
@@ -110,5 +116,33 @@ struct PrivacyCover: View {
                 .foregroundStyle(.secondary)
         }
         .ignoresSafeArea()
+    }
+}
+
+/// The YubiKey PIN alert.
+private struct PINPrompt: ViewModifier {
+    @Bindable var service: YubiKeyService
+    @State private var pin = ""
+
+    func body(content: Content) -> some View {
+        content.alert(
+            "YubiKey PIN", isPresented: Binding(get: { service.pinRequest != nil }, set: { if !$0 { finish(nil) } }),
+            presenting: service.pinRequest
+        ) { _ in
+            SecureField("PIN", text: $pin)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+            Button("Continue") { finish(pin) }
+            Button("Cancel", role: .cancel) { finish(nil) }
+        } message: { request in
+            Text(request.message)
+        }
+    }
+
+    private func finish(_ value: String?) {
+        guard let request = service.pinRequest else { return }
+        service.pinRequest = nil
+        pin = ""
+        request.continuation.resume(returning: value)
     }
 }

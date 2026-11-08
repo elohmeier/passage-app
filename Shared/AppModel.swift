@@ -122,8 +122,18 @@ final class AppModel {
         reload()
     }
 
+    /// The YubiKey half of decryption; set by the app (extensions can't use NFC).
+    var hardwareKeyAgreement: HardwareKeyAgreement?
+
     func decrypt(_ data: Data) async throws -> Data {
-        try await identityStore.decrypt(data, sessions: sessions, reason: String(localized: "Unlock your keys to decrypt"))
+        try await identityStore.decrypt(
+            data, sessions: sessions, reason: String(localized: "Unlock your keys to decrypt"), hardware: hardwareKeyAgreement)
+    }
+
+    func addYubiKey(_ ref: StoredIdentity.YubiKeyRef, name: String) -> Bool {
+        let ok = attempt { _ = try identityStore.addYubiKey(ref, name: name) }
+        reload()
+        return ok
     }
 
     /// Decrypts every entry once (one authentication) to learn URLs and usernames for AutoFill.

@@ -251,7 +251,7 @@ final class StoreModel {
 
     func updateReadability() async {
         guard let store, let device = deviceIdentity,
-            let tag = device.recipients.compactMap({ try? TagRecipient($0) }).first
+            device.recipients.contains(where: { (try? TagRecipient($0)) != nil })
         else {
             readability = nil
             return
@@ -267,11 +267,13 @@ final class StoreModel {
         let importedTypes: Set<String> = Set(identities.filter { $0.kind == .imported }.flatMap { identity in
             identity.recipients.map { $0.hasPrefix("age1pq1") ? "mlkem768x25519" : "X25519" }
         })
+        // The device key and any YubiKeys; tags are checked with public keys only.
+        let tags = identities.filter { $0.kind != .imported }.compactMap { $0.recipients.lazy.compactMap { try? TagRecipient($0) }.first }
         let entries = snapshot.entries
         let headers = await store.headers(of: entries)
         let unreadable = Set(entries.filter { entry in
             guard let header = headers[entry] else { return false }
-            return !tag.canDecrypt(header) && !header.stanzas.contains { importedTypes.contains($0.type) }
+            return !tags.contains { $0.canDecrypt(header) } && !header.stanzas.contains { importedTypes.contains($0.type) }
         })
         readability = Readability(isRecipient: isRecipient, unreadable: unreadable, total: entries.count)
     }

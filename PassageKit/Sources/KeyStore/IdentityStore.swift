@@ -13,6 +13,27 @@ public struct StoredIdentity: Codable, Identifiable, Hashable, Sendable {
         /// A software tag key in the keychain. Only created in the Simulator, which has no
         /// Secure Enclave, so the app can be developed there.
         case simulator
+        /// A P-256 key in a YubiKey PIV slot (age-plugin-yubikey compatible). Only the public
+        /// key is stored; decryption needs the YubiKey over NFC or USB-C.
+        case yubikey
+    }
+
+    /// Where a `.yubikey` identity's private key lives.
+    public struct YubiKeyRef: Codable, Hashable, Sendable {
+        public let serial: UInt32
+        public let slot: UInt8
+        /// Uncompressed (x963) P-256 public key.
+        public let publicKey: Data
+        /// From the slot's PIN policy: ask for the PIN before tapping, since the NFC sheet
+        /// covers the app while the YubiKey is being read.
+        public let needsPIN: Bool
+
+        public init(serial: UInt32, slot: UInt8, publicKey: Data, needsPIN: Bool = true) {
+            self.serial = serial
+            self.slot = slot
+            self.publicKey = publicKey
+            self.needsPIN = needsPIN
+        }
     }
 
     public let id: UUID
@@ -23,6 +44,8 @@ public struct StoredIdentity: Codable, Identifiable, Hashable, Sendable {
     /// Recipients that encrypt to this identity. Device keys have two: `age1tag1…` (classic)
     /// and `age1tagpq1…` (post-quantum); either can be decrypted.
     public let recipients: [String]
+    /// Set for `.yubikey` identities.
+    public var yubiKey: YubiKeyRef? = nil
 
     /// The device key's recipient to add to a folder that already has `existing` recipients.
     /// age can't mix post-quantum and classic recipients in one file, so match what's there.
@@ -183,6 +206,24 @@ public final class IdentityStore: Sendable {
         return imported
     }
 
+    /// Adds a YubiKey slot's key. Its recipients are `age1yubikey1…` (what age-plugin-yubikey
+    /// prints) and the equivalent native `age1tag1…`.
+    public func addYubiKey(_ ref: StoredIdentity.YubiKeyRef, name: String) throws(KeyStoreError) -> StoredIdentity {
+        guard let key = try? P256.KeyAgreement.PublicKey(x963Representation: ref.publicKey) else {
+            throw .invalidIdentity("Not a P-256 public key.")
+        }
+        if let existing = try list().first(where: { $0.yubiKey == ref }) { return existing }
+        var identity = StoredIdentity(
+            id: UUID(), name: name, kind: .yubikey, protection: .unprotected, createdAt: .now,
+            recipients: [
+                TagRecipient(kind: .pivP256(hrp: "age1yubikey"), p256PublicKey: key).encoded,
+                TagRecipient(kind: .p256tag, p256PublicKey: key).encoded,
+            ])
+        identity.yubiKey = ref
+        try append(identity)
+        return identity
+    }
+
     // MARK: Unlocking
 
     /// Loads usable age identities. Pass an authenticated `context` from `UnlockSessionManager`
@@ -193,7 +234,7 @@ public final class IdentityStore: Sendable {
     public func unlock(_ identities: [StoredIdentity]? = nil, context: LAContext?) throws(KeyStoreError) -> [any AgeIdentity] {
         let selected = if let identities { identities } else { try list() }
         var out: [any AgeIdentity] = []
-        for identity in selected.sorted(by: { ($0.kind == .imported ? 1 : 0) < ($1.kind == .imported ? 1 : 0) }) {
+        for identity in selected.sorted(by: { ($0.kind == .imported ? 1 : 0) < ($1.kind == .imported ? 1 : 0) }) where identity.kind != .yubikey {
             out.append(try unlock(identity, context: context))
         }
         return out
@@ -208,6 +249,9 @@ public final class IdentityStore: Sendable {
         case .simulator:
             guard let data = try store.get("\(id).software", context: context) else { throw .notFound }
             return TagIdentity(key: try SoftwareKeyBlob(data).key())
+
+        case .yubikey:
+            throw .invalidIdentity("YubiKey identities are used through IdentityStore.decrypt.")
 
         case .imported:
             guard let stored = try store.get("\(id).secret", context: context) else { throw .notFound }

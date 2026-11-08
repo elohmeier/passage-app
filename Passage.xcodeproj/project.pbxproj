@@ -22,6 +22,7 @@
 		AA0000000000000000000223 /* PassStore in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000323 /* PassStore */; };
 		AA0000000000000000000224 /* GitSync in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000324 /* GitSync */; };
 		AA0000000000000000000230 /* Controls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000103 /* Controls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA0000000000000000000240 /* YubiKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000340 /* YubiKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -95,6 +96,7 @@
 				AA0000000000000000000203 /* PassStore in Frameworks */,
 				AA0000000000000000000204 /* GitSync in Frameworks */,
 				AA0000000000000000000205 /* GitHubKit in Frameworks */,
+				AA0000000000000000000240 /* YubiKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -173,6 +175,7 @@
 				AA0000000000000000000303 /* PassStore */,
 				AA0000000000000000000304 /* GitSync */,
 				AA0000000000000000000305 /* GitHubKit */,
+				AA0000000000000000000340 /* YubiKit */,
 			);
 			productName = Passage;
 			productReference = AA0000000000000000000101 /* Passage.app */;
@@ -253,6 +256,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AA0000000000000000000802 /* XCLocalSwiftPackageReference "PassageKit" */,
+				AA0000000000000000000803 /* XCRemoteSwiftPackageReference "yubikit-swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA0000000000000000000602 /* Products */;
@@ -386,6 +390,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Config/Passage.entitlements;
+				INFOPLIST_FILE = "Config/Passage-Info.plist";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Passage reads your YubiKey to decrypt passwords protected by it.";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -420,6 +426,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Config/Passage.entitlements;
+				INFOPLIST_FILE = "Config/Passage-Info.plist";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Passage reads your YubiKey to decrypt passwords protected by it.";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -608,6 +616,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		AA0000000000000000000803 /* XCRemoteSwiftPackageReference "yubikit-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Yubico/yubikit-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 1.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		AA0000000000000000000301 /* AgeCrypto */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -660,6 +679,11 @@
 		AA0000000000000000000324 /* GitSync */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GitSync;
+		};
+		AA0000000000000000000340 /* YubiKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000000000000000000803 /* XCRemoteSwiftPackageReference "yubikit-swift" */;
+			productName = YubiKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,5 +1,5 @@
 {
-  "originHash" : "0d52b2fdfe247b641aa2a9afa6a243be0987ec899f868aa10e354efe8d247db1",
+  "originHash" : "5257f4c51cf328a90197bfa51ffdbea801d428ca40004cb50859c482e24a51e6",
   "pins" : [
     {
       "identity" : "swift-asn1",
@@ -38,6 +38,15 @@
       }
     },
     {
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log",
+      "state" : {
+        "revision" : "e3da04078777e6a1b72ce19981fbd6539b0847d8",
+        "version" : "1.17.0"
+      }
+    },
+    {
       "identity" : "swift-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
@@ -71,6 +80,15 @@
       "state" : {
         "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
         "version" : "1.8.1"
+      }
+    },
+    {
+      "identity" : "yubikit-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Yubico/yubikit-swift",
+      "state" : {
+        "revision" : "e19212f2efbca9af280e57542e669885de5acdc1",
+        "version" : "1.4.0"
       }
     }
   ],

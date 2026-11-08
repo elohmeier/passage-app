@@ -204,8 +204,10 @@ CryptoKit.
 | M5 ✅ | Writing: create, edit, move, delete, multi-recipient encryption, commit/push, conflict UI, re-encrypt | Round trip with desktop `passage` including conflicts |
 | M6 🟡 | AutoFill extension: bulk identity store, OTP credentials, text insertion | Safari login plus 2FA fill |
 | M7 ✅ | App Intents, Control Center control, generator presets, recipient health check, polish | — |
-| M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
+| M8 🟡 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
+
+M8 status: built, needs a YubiKey to verify. yubikit-swift 1.4.0 (exact). "Add YubiKey" reads P-256 keys from the retired PIV slots (82–95, where age-plugin-yubikey creates them) and stores serial, slot, public key and whether a PIN is needed; recipients are `age1yubikey1…` and `age1tag1…`. Decryption picks the matching stanza from public data, asks for the PIN *before* the tap (the NFC sheet covers the app), then verifies PIN + ECDH in one NFC/USB-C session and feeds the result into the normal decrypt path. A YubiKey is only used when no Face ID key can open the file. Not available in AutoFill: CoreNFC isn't allowed in app extensions.
 
 M7 status: done. SSH recipients (`ssh-ed25519`, `ssh-rsa`) for encryption, verified with `age -d -i <ssh key>`. App Intents: Sync Passwords (background), Copy Password / Copy One-Time Code (foreground, device-unlock policy, Face ID), Open Password, Search Passwords, a `PasswordEntity` with search, four App Shortcuts. A `Controls` WidgetKit extension (`de.nerdworks.passage.controls`) offers Control Center buttons for Sync and Search.
 
@@ -247,6 +249,8 @@ Things `swift test` on the Mac can't cover:
 - [ ] AutoFill with a Files-folder store (does the security-scoped bookmark resolve inside the extension?).
 - [ ] Shortcuts: "Copy a password from Passage" asks for an entry, opens Passage, one Face ID, copies; "Sync Passage" runs without opening the app.
 - [ ] Control Center: add the Sync and Search Passwords controls; Sync works with the app closed (background, SSH deploy key), Search opens the app with search focused.
+- [ ] YubiKey (5 series, NFC): Add YubiKey finds the age-plugin-yubikey slot; an entry encrypted on the Mac with `-r age1yubikey1…` decrypts after PIN + tap; wrong PIN shows retries; the PIN isn't asked again until the app locks.
+- [ ] YubiKey over USB-C (plugged in): same without NFC.
 - [ ] Clone over SSH from a non-GitHub host: the fingerprint prompt appears once, and the host is listed under Known Hosts.
 
 ## 10. Risks and open questions

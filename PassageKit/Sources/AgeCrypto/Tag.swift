@@ -352,3 +352,41 @@ extension TagRecipient {
         header.stanzas.contains(where: isAddressed)
     }
 }
+
+extension TagRecipient {
+    /// The ephemeral P-256 share of a stanza addressed to this key (see `isAddressed`), i.e.
+    /// the input for the key agreement a hardware token must perform.
+    public func share(in stanza: Stanza) -> P256.KeyAgreement.PublicKey? {
+        guard isAddressed(by: stanza), let enc = Base64.decode(stanza.args[1]) else { return nil }
+        switch stanza.type {
+        case "p256tag": return try? P256.KeyAgreement.PublicKey(x963Representation: enc)
+        case "piv-p256": return try? P256.KeyAgreement.PublicKey(compressedRepresentation: enc)
+        default: return nil  // mlkem768p256tag needs ML-KEM, which PIV tokens don't have
+        }
+    }
+}
+
+/// A tag key whose ECDH results were computed elsewhere (e.g. on a YubiKey over NFC) before
+/// decryption, so the synchronous decrypt path never waits on hardware I/O.
+public struct PrecomputedTagKey: TagPrivateKey {
+    public let p256PublicKey: P256.KeyAgreement.PublicKey
+    /// Shared secrets by the share's x963 representation.
+    let secrets: [Data: Data]
+
+    /// `secrets` maps each share's x963 representation to the ECDH result for it.
+    public init(publicKey: P256.KeyAgreement.PublicKey, secrets: [Data: Data]) {
+        p256PublicKey = publicKey
+        self.secrets = secrets
+    }
+
+    public var mlkemPublicKey: MLKEM768.PublicKey? { nil }
+
+    public func p256SharedSecret(with share: P256.KeyAgreement.PublicKey) throws(AgeError) -> Data {
+        guard let secret = secrets[share.x963Representation] else { throw .identityUnavailable("no key agreement for this stanza") }
+        return secret
+    }
+
+    public func mlkemDecapsulate(_ ciphertext: Data) throws(AgeError) -> Data {
+        throw .incorrectIdentity
+    }
+}
