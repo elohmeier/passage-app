@@ -85,6 +85,12 @@ final class StubProtocol: URLProtocol, @unchecked Sendable {
             await #expect(throws: GitHubError.accessDenied) { try await flow.waitForToken(code) }
         }
 
+        /// GitHub answers the code request itself with 200 + error when device flow is off.
+        @Test func deviceFlowDisabledOnCodeRequest() async throws {
+            StubProtocol.reset(["POST /login/device/code": [(200, #"{"error":"device_flow_disabled","error_description":"Device Flow must be explicitly enabled for this App"}"#)]])
+            await #expect(throws: GitHubError.deviceFlowDisabled) { try await flow.requestCode() }
+        }
+
         @Test func deviceFlowDisabled() async throws {
             StubProtocol.reset(["POST /login/oauth/access_token": [(200, #"{"error":"device_flow_disabled"}"#)]])
             let code = DeviceFlow.Code(deviceCode: "dc", userCode: "X", verificationURI: URL(string: "https://github.com/login/device")!, expiresIn: 900, interval: 5)

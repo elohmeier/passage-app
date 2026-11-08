@@ -59,7 +59,12 @@ public struct DeviceFlow: Sendable {
     }
 
     public func requestCode() async throws -> Code {
-        try await post("https://github.com/login/device/code", ["client_id": clientID], as: Code.self)
+        // Errors such as device_flow_disabled arrive as 200 responses with an "error" field.
+        let data = try await post("https://github.com/login/device/code", ["client_id": clientID])
+        if let error = try? JSONDecoder().decode(TokenResponse.self, from: data), let code = error.error {
+            throw code == "device_flow_disabled" ? GitHubError.deviceFlowDisabled : GitHubError.unexpected(error.errorDescription ?? code)
+        }
+        return try decode(Code.self, data)
     }
 
     /// Polls until the user approves (returns the access token), denies, or the code expires.
@@ -68,10 +73,9 @@ public struct DeviceFlow: Sendable {
         let deadline = ContinuousClock.now + .seconds(code.expiresIn)
         while ContinuousClock.now < deadline {
             try await sleep(.seconds(interval))
-            let response = try await post(
+            let response = try decode(TokenResponse.self, try await post(
                 "https://github.com/login/oauth/access_token",
-                ["client_id": clientID, "device_code": code.deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"],
-                as: TokenResponse.self)
+                ["client_id": clientID, "device_code": code.deviceCode, "grant_type": "urn:ietf:params:oauth:grant-type:device_code"]))
             if let token = response.accessToken { return token }
             switch response.error {
             case "authorization_pending": continue
@@ -96,7 +100,15 @@ public struct DeviceFlow: Sendable {
         }
     }
 
-    private func post<T: Decodable>(_ url: String, _ form: [String: String], as: T.Type) async throws -> T {
+    private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw GitHubError.decoding("\(error)")
+        }
+    }
+
+    private func post(_ url: String, _ form: [String: String]) async throws -> Data {
         var request = URLRequest(url: URL(string: url)!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -109,10 +121,6 @@ public struct DeviceFlow: Sendable {
         guard (200..<300).contains(status) else {
             throw GitHubError.http(status: status, message: String(decoding: data.prefix(200), as: UTF8.self))
         }
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            throw GitHubError.decoding("\(error)")
-        }
+        return data
     }
 }

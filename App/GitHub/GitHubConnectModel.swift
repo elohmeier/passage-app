@@ -37,7 +37,7 @@ final class GitHubConnectModel {
     }
 
     #if DEBUG
-        /// Screenshot hook: `-PassageGitHubStep code|picker|install`.
+        /// Screenshot hook: `-PassageGitHubStep code|picker|install|start` (start = real sign-in).
         func applyDebugStep() {
             let repo = { (id: Int, name: String, isPrivate: Bool) in
                 GitHubAPI.Repository(
@@ -56,6 +56,7 @@ final class GitHubConnectModel {
                     Candidate(repository: repo(3, "blog", false), looksLikeStore: false),
                 ])
             case "install": step = .needsInstallation
+            case "start": Task { await start() }
             default: break
             }
         }
