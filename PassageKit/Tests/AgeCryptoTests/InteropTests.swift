@@ -100,3 +100,47 @@ enum CLI {
         var description: String { message }
     }
 }
+
+/// SSH recipients: we encrypt, `age -d -i <ssh private key>` decrypts.
+@Suite(.enabled(if: CLI.path("age") != nil && FileManager.default.isExecutableFile(atPath: "/usr/bin/ssh-keygen")))
+struct SSHRecipientInteropTests {
+    @Test(arguments: [["-t", "ed25519"], ["-t", "rsa", "-b", "3072"]])
+    func ageDecryptsWhatWeEncrypt(keyArgs: [String]) throws {
+        let dir = try CLI.temp()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let key = dir.appending(path: "id")
+        let p = Process()
+        p.executableURL = URL(filePath: "/usr/bin/ssh-keygen")
+        p.arguments = keyArgs + ["-N", "", "-q", "-f", key.path, "-C", "test@example"]
+        try p.run()
+        p.waitUntilExit()
+        let line = try String(contentsOf: dir.appending(path: "id.pub"), encoding: .utf8)
+        let recipient = try RecipientParser.parse(line)
+        #expect(recipient.encoded == line.split(separator: " ").prefix(2).joined(separator: " "))
+        let message = Data("over ssh keys\n".utf8)
+        let ct = try Age.encrypt(message, to: [recipient])
+        #expect(try CLI.run("age", ["-d", "-i", key.path], input: ct) == message)
+    }
+}
+
+@Suite struct Field25519Tests {
+    /// The Ed25519 base point (y = 4/5) maps to the X25519 base point u = 9.
+    @Test func basePoint() {
+        var y = [UInt8](repeating: 0x66, count: 32)
+        y[0] = 0x58
+        let u = Field25519.montgomeryU(fromEdwardsY: Data(y))
+        #expect(u == Data([9] + [UInt8](repeating: 0, count: 31)))
+    }
+
+    @Test func rejectsIdentityAndNonCanonical() {
+        #expect(Field25519.montgomeryU(fromEdwardsY: Data([1] + [UInt8](repeating: 0, count: 31))) == nil, "y = 1")
+        #expect(Field25519.montgomeryU(fromEdwardsY: Data([UInt8](repeating: 0xFF, count: 31) + [0x7F])) == nil, "y >= p")
+    }
+
+    @Test func multiplicationAgainstInverse() {
+        // x * x^-1 == 1 for a few values, including ones near p.
+        for x: Field25519.Element in [[2, 0, 0, 0], [0xFFFF_FFFF_FFFF_FFEC, ~0, ~0, 0x7FFF_FFFF_FFFF_FFFF], [12345, 678, 9, 1 << 62]] {
+            #expect(Field25519.mul(x, Field25519.invert(x)) == [1, 0, 0, 0])
+        }
+    }
+}

@@ -13,7 +13,9 @@ public enum RecipientParser {
             guard let plugin = pluginName(s) else { return try X25519Recipient(s) }
             throw .invalidEncoding("Recipients of the age plugin type \(plugin) are not supported")
         }
-        if s.hasPrefix("ssh-") { throw .invalidEncoding("SSH recipients are not supported yet") }
+        if s.hasPrefix("ssh-ed25519 ") { return try SSHEd25519Recipient(s) }
+        if s.hasPrefix("ssh-rsa ") { return try SSHRSARecipient(s) }
+        if s.hasPrefix("ssh-") { throw .invalidEncoding("Only ssh-ed25519 and ssh-rsa SSH keys can be used as recipients") }
         throw .invalidEncoding("Unknown recipient type")
     }
 
