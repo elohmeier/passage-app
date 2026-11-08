@@ -71,7 +71,7 @@ public struct LocalStore: Sendable {
 
     // MARK: File coordination
 
-    private func coordinated<T: Sendable>(
+    func coordinated<T: Sendable>(
         reading url: URL, options: NSFileCoordinator.ReadingOptions = [], _ body: @escaping @Sendable (URL) throws -> T
     ) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
@@ -82,6 +82,40 @@ public struct LocalStore: Sendable {
                     return
                 }
                 continuation.resume(with: Result { try body(intent.url) })
+            }
+        }
+    }
+
+    func coordinated(
+        writing url: URL, options: NSFileCoordinator.WritingOptions = [], _ body: @escaping @Sendable (URL) throws -> Void
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            let intent = NSFileAccessIntent.writingIntent(with: url, options: options)
+            NSFileCoordinator().coordinate(with: [intent], queue: Self.queue) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                continuation.resume(with: Result { try body(intent.url) })
+            }
+        }
+    }
+
+    func coordinated(moving source: URL, to target: URL) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            let from = NSFileAccessIntent.writingIntent(with: source, options: .forMoving)
+            let to = NSFileAccessIntent.writingIntent(with: target, options: .forReplacing)
+            nonisolated(unsafe) let coordinator = NSFileCoordinator()  // used only inside its own callback
+            coordinator.coordinate(with: [from, to], queue: Self.queue) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+                continuation.resume(with: Result {
+                    coordinator.item(at: from.url, willMoveTo: to.url)
+                    try FileManager.default.moveItem(at: from.url, to: to.url)
+                    coordinator.item(at: from.url, didMoveTo: to.url)
+                })
             }
         }
     }
@@ -115,5 +149,71 @@ public struct LocalStore: Sendable {
             if isCurrent() { return }
         }
         throw StoreError.downloadTimedOut(displayName)
+    }
+}
+
+// MARK: Writing
+
+extension StoreError {
+    /// Raised when no `.age-recipients` applies, so there's nobody to encrypt to.
+    static func noRecipients(_ entry: EntryPath) -> StoreError {
+        .invalidRecipients(file: ".age-recipients", message: "no recipients file applies to “\(entry.path)”. Add one to the store or folder.")
+    }
+}
+
+extension LocalStore {
+    /// Encrypts `plaintext` to the recipients that apply to `entry` and writes it atomically.
+    /// Returns the recipients used.
+    @discardableResult
+    public func save(_ entry: EntryPath, plaintext: Data) async throws -> [any AgeRecipient] {
+        let recipients = try await recipients(for: entry)
+        guard !recipients.isEmpty else { throw StoreError.noRecipients(entry) }
+        let ciphertext = try Age.encrypt(plaintext, to: recipients)
+        let url = url(for: entry)
+        try await coordinated(writing: url) { url in
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try ciphertext.write(to: url, options: .atomic)
+        }
+        return recipients
+    }
+
+    public func exists(_ entry: EntryPath) -> Bool {
+        FileManager.default.fileExists(atPath: url(for: entry).path)
+    }
+
+    /// Deletes an entry and any folders it leaves empty.
+    public func delete(_ entry: EntryPath) async throws {
+        let url = url(for: entry)
+        try await coordinated(writing: url, options: .forDeleting) { try FileManager.default.removeItem(at: $0) }
+        removeEmptyFolders(from: entry.folder)
+    }
+
+    /// Moves an entry. If the destination has different recipients, the entry is decrypted with
+    /// `decrypt` and re-encrypted for them, as `passage mv` does.
+    public func move(_ from: EntryPath, to: EntryPath, decrypt: @Sendable (Data) async throws -> Data) async throws {
+        guard from != to else { return }
+        guard !exists(to) else { throw CocoaError(.fileWriteFileExists) }
+        let old = try await recipients(for: from).map(\.encoded).sorted()
+        let new = try await recipients(for: to).map(\.encoded).sorted()
+        if old == new {
+            let source = url(for: from), target = url(for: to)
+            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try await coordinated(moving: source, to: target)
+        } else {
+            let plaintext = try await decrypt(read(from))
+            try await save(to, plaintext: plaintext)
+            try await delete(from)
+        }
+        removeEmptyFolders(from: from.folder)
+    }
+
+    private func removeEmptyFolders(from folder: String) {
+        var folder = folder
+        while !folder.isEmpty {
+            let url = root.appending(path: folder, directoryHint: .isDirectory)
+            guard let contents = try? FileManager.default.contentsOfDirectory(atPath: url.path), contents.isEmpty else { return }
+            try? FileManager.default.removeItem(at: url)
+            folder = EntryPath(folder).folder
+        }
     }
 }

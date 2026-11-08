@@ -197,3 +197,111 @@ import Testing
         #expect(try await store.recipients(for: EntryPath("home/wifi")).map(\.encoded) == [id.recipient.encoded])
     }
 }
+
+@Suite struct EntryDraftTests {
+    @Test func roundTripKeepsFieldsAndOrder() {
+        let text = "hunter2\nusername: alice\nurl: https://example.com\npin: 1234\nnotes: |\n  line one\n  line two\nloose note\notpauth://totp/Ex:alice?secret=JBSWY3DPEHPK3PXP&issuer=Ex\n"
+        let draft = EntryDraft(text)
+        #expect(draft.text == text)
+        #expect(Entry(draft.text) == Entry(text))
+    }
+
+    @Test func editsUsernameAndURL() {
+        var draft = EntryDraft("pw\npin: 1\n")
+        draft.url = "https://a.example"
+        draft.username = "bob"
+        #expect(draft.text == "pw\nusername: bob\nurl: https://a.example\npin: 1\n")
+        draft.username = ""
+        #expect(draft.text == "pw\nurl: https://a.example\npin: 1\n")
+        #expect(draft.otherFields.map(\.key) == ["pin"])
+        draft.otherFields.append(.init(key: "note", value: "x"))
+        #expect(draft.text == "pw\nurl: https://a.example\npin: 1\nnote: x\n")
+    }
+
+    @Test func passforiosOTPFieldsBecomeURI() throws {
+        let draft = EntryDraft("pw\notp_secret: GEZDGNBVGY3TQOJQ\notp_digits: 8\n")
+        let uri = try #require(draft.otpURI)
+        #expect(uri.hasPrefix("otpauth://totp/"))
+        #expect(Entry(draft.text).otp?.digits == 8)
+        #expect(Entry(draft.text).otp?.secret == Data("12345678901234567890".prefix(10).utf8))
+    }
+
+    @Test func base32RoundTrip() {
+        let data = Data("12345678901234567890".utf8)
+        #expect(Base32.decode(Base32.encode(data)) == data)
+    }
+}
+
+@Suite struct PasswordGeneratorTests {
+    @Test func includesEveryClass() {
+        for _ in 0..<50 {
+            var o = PasswordGenerator.Options()
+            o.length = 8
+            let p = PasswordGenerator.password(o)
+            #expect(p.count == 8)
+            #expect(p.contains(where: \.isLowercase) && p.contains(where: \.isUppercase) && p.contains(where: \.isNumber))
+            #expect(p.contains { PasswordGenerator.specials.contains($0) })
+        }
+    }
+
+    @Test func passphrase() {
+        #expect(PasswordGenerator.wordlist.count == 7776)
+        #expect(PasswordGenerator.wordlist.contains("false"), "official list, not passforios' FALSE")
+        var o = PasswordGenerator.PassphraseOptions()
+        o.words = 4
+        o.capitalize = true
+        let p = PasswordGenerator.passphrase(o)
+        #expect(p.split(separator: "-").count == 4)
+        #expect(p.split(separator: "-").allSatisfy { $0.first!.isUppercase })
+        #expect(PasswordGenerator.entropy(o) > 51 && PasswordGenerator.entropy(o) < 52)
+    }
+}
+
+@Suite struct StoreWriteTests {
+    let root = FileManager.default.temporaryDirectory.appending(path: "write-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let a = X25519Identity()
+    let b = X25519Identity()
+
+    init() throws {
+        try FileManager.default.createDirectory(at: root.appending(path: "shared"), withIntermediateDirectories: true)
+        try Data("\(a.recipient.encoded)\n".utf8).write(to: root.appending(path: ".age-recipients"))
+        try Data("\(a.recipient.encoded)\n\(b.recipient.encoded)\n".utf8).write(to: root.appending(path: "shared/.age-recipients"))
+    }
+
+    @Test func saveEncryptsToNearestRecipients() async throws {
+        let store = LocalStore(root: root)
+        try await store.save(EntryPath("shared/wifi"), plaintext: Data("pw\n".utf8))
+        let ct = try await store.read(EntryPath("shared/wifi"))
+        #expect(try Age.decrypt(ct, identities: [b]) == Data("pw\n".utf8))
+        try await store.save(EntryPath("deep/new/bank"), plaintext: Data("x\n".utf8))
+        #expect(throws: AgeError.self) { try Age.decrypt(try Data(contentsOf: store.url(for: EntryPath("deep/new/bank"))), identities: [b]) }
+    }
+
+    @Test func moveReencryptsWhenRecipientsDiffer() async throws {
+        let store = LocalStore(root: root)
+        try await store.save(EntryPath("mine/bank"), plaintext: Data("secret\n".utf8))
+        let a = self.a
+        try await store.move(EntryPath("mine/bank"), to: EntryPath("shared/bank")) { try Age.decrypt($0, identities: [a]) }
+        #expect(!FileManager.default.fileExists(atPath: root.appending(path: "mine").path), "empty folder removed")
+        #expect(try Age.decrypt(await store.read(EntryPath("shared/bank")), identities: [b]) == Data("secret\n".utf8))
+
+        // Same recipients: a plain rename, no decryption needed.
+        try await store.move(EntryPath("shared/bank"), to: EntryPath("shared/bank2")) { _ in
+            Issue.record("should not decrypt")
+            return Data()
+        }
+        #expect(store.exists(EntryPath("shared/bank2")))
+    }
+
+    @Test func noRecipientsIsAnError() async throws {
+        try FileManager.default.removeItem(at: root.appending(path: ".age-recipients"))
+        await #expect(throws: StoreError.self) { try await LocalStore(root: root).save(EntryPath("x"), plaintext: Data()) }
+    }
+
+    @Test func deleteRemovesEmptyFolders() async throws {
+        let store = LocalStore(root: root)
+        try await store.save(EntryPath("a/b/c"), plaintext: Data("x".utf8))
+        try await store.delete(EntryPath("a/b/c"))
+        #expect(!FileManager.default.fileExists(atPath: root.appending(path: "a").path))
+    }
+}

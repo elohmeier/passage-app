@@ -64,7 +64,7 @@ let package = Package(
     targets: [
         .target(name: "AgeCrypto"),
         .target(name: "KeyStore", dependencies: ["AgeCrypto"]),
-        .target(name: "PassStore", dependencies: ["AgeCrypto"]),
+        .target(name: "PassStore", dependencies: ["AgeCrypto"], resources: [.copy("Resources/eff_large_wordlist.txt")]),
         .target(
             name: "CGit2", path: "Vendor/libgit2", exclude: libgit2Exclude, sources: libgit2Sources,
             publicHeadersPath: "include", cSettings: libgit2Settings, linkerSettings: [.linkedLibrary("iconv")]),

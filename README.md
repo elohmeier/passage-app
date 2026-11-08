@@ -32,3 +32,4 @@ libgit2 is a submodule pinned to upstream v1.9.2: clone with `--recursive` or ru
 - The HPKE and tag code in `AgeCrypto/Tag.swift` follows
   [age-plugin-se](https://github.com/remko/age-plugin-se) (MIT, © Remko Tronçon).
 - Test vectors from [C2SP/CCTV](https://github.com/C2SP/CCTV).
+- Passphrase words from the [EFF large wordlist](https://www.eff.org/dice) (CC BY 3.0 US).
