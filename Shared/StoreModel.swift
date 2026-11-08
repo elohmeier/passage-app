@@ -411,6 +411,7 @@ final class StoreModel {
         gitConfig = nil
         lastCommit = nil
         snapshot = .empty
+        if updatesAutoFill { Task { await AutoFillStore.clear() } }
         defaults.removeObject(forKey: Self.bookmarkKey)
         defaults.removeObject(forKey: Self.gitConfigKey)
     }
@@ -424,8 +425,12 @@ final class StoreModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        if updatesAutoFill { await AutoFillStore.update(entries: snapshot.entries) }
         await updateReadability()
     }
+
+    /// The app keeps the AutoFill index current; the extension only reads it.
+    var updatesAutoFill = true
 
     func read(_ entry: EntryPath) async throws -> Data {
         guard let store else { throw StoreError.accessDenied }

@@ -29,3 +29,14 @@ extension IdentityStore {
         return try Age.decrypt(ciphertext, identities: identities)
     }
 }
+
+extension IdentityStore {
+    /// Authenticates once and returns every identity, ready for many decryptions (for example
+    /// indexing the whole store). The returned identities keep the authenticated context.
+    @concurrent
+    public func unlockAll(sessions: UnlockSessionManager, reason: String) async throws -> [any AgeIdentity] {
+        let all = try list()
+        let context = try await sessions.context(for: all.map(\.protection), reason: reason)
+        return try unlock(all, context: context)
+    }
+}

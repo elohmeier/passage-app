@@ -6,6 +6,8 @@ struct SettingsView: View {
     @Environment(StoreModel.self) private var store
     @State private var confirmingClose = false
     @State private var sshKey: String?
+    @State private var autoFillStatus: String?
+    @State private var preparing = false
 
     var body: some View {
         @Bindable var model = model
@@ -24,6 +26,28 @@ struct SettingsView: View {
                 }
             } footer: {
                 Text("Copied passwords stay on this device only and are removed after this time.")
+            }
+
+            if store.store != nil {
+                Section {
+                    Button(preparing ? "Preparing…" : "Prepare AutoFill", systemImage: "key.viewfinder") {
+                        Task {
+                            preparing = true
+                            defer { preparing = false }
+                            do {
+                                let n = try await model.prepareAutoFill(store: store)
+                                autoFillStatus = String(localized: "Indexed \(n) entries.")
+                            } catch {
+                                autoFillStatus = error.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(preparing)
+                } header: {
+                    Text("AutoFill")
+                } footer: {
+                    Text((autoFillStatus.map { $0 + " " } ?? "") + "Turn on Passage in Settings › General › AutoFill & Passwords. Preparing decrypts every entry once, after one Face ID, to learn websites and usernames; only those are shared with iOS for suggestions. Entries you open are learned automatically.")
+                }
             }
 
             Section {

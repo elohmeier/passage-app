@@ -339,3 +339,38 @@ import Testing
         #expect(headers.values.allSatisfy { device.classicRecipient.canDecrypt($0) })
     }
 }
+
+@Suite struct AutoFillTests {
+    @Test func guessesFromPaths() {
+        #expect(AutoFillIndex.guess(EntryPath("github.com/alice")) == .init(path: "github.com/alice", domains: ["github.com"], username: "alice", hasOTP: false, fromContent: false))
+        #expect(AutoFillIndex.guess(EntryPath("email/Fastmail.com")).domains == ["fastmail.com"])
+        #expect(AutoFillIndex.guess(EntryPath("email/Fastmail.com")).username == nil)
+        #expect(AutoFillIndex.guess(EntryPath("bank")).domains.isEmpty)
+        #expect(AutoFillIndex.guess(EntryPath("version 1.2/x")).domains.isEmpty, "numeric TLDs aren't hosts")
+    }
+
+    @Test func learnsFromContentAndKeepsIt() {
+        var index = AutoFillIndex().updated(for: [EntryPath("bank"), EntryPath("github.com/alice")])
+        index.learn(EntryPath("bank"), from: Entry("pw\nusername: 1234\nurl: https://online.bank.example/login\notpauth://totp/x?secret=JBSWY3DPEHPK3PXP"))
+        let bank = index.items.first { $0.path == "bank" }!
+        #expect(bank.domains == ["online.bank.example"] && bank.username == "1234" && bank.hasOTP && bank.fromContent)
+        // Refreshing keeps learned items, drops deleted entries, adds new ones.
+        let next = index.updated(for: [EntryPath("bank"), EntryPath("new.example/bob")])
+        #expect(next.items.map(\.path) == ["bank", "new.example/bob"])
+        #expect(next.items[0].fromContent)
+    }
+
+    @Test func matching() {
+        let items = [
+            AutoFillIndex.guess(EntryPath("github.com/alice")),
+            AutoFillIndex.guess(EntryPath("work/gist.github.com")),
+            AutoFillIndex.guess(EntryPath("evilgithub.com/x")),
+            AutoFillIndex.guess(EntryPath("accounts.example.com/bob")),
+        ]
+        #expect(AutoFillMatcher.match(items, service: "https://github.com/login").map(\.path) == ["github.com/alice", "work/gist.github.com"])
+        #expect(AutoFillMatcher.match(items, service: "gist.github.com").map(\.path) == ["work/gist.github.com", "github.com/alice"])
+        #expect(AutoFillMatcher.match(items, service: "https://www.github.com").first?.path == "github.com/alice")
+        #expect(AutoFillMatcher.match(items, service: "example.com").map(\.path) == ["accounts.example.com/bob"])
+        #expect(AutoFillMatcher.match(items, service: "hub.com").isEmpty)
+    }
+}

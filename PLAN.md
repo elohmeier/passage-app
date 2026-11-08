@@ -202,10 +202,12 @@ CryptoKit.
 | M3 🟡 | Read-only app with the Files folder backend: open a store folder, tree, search, entry view, copy, TOTP | Daily use for reading a real passage store from iCloud Drive |
 | M4 ✅ | `GitSync`: clone/fetch/merge (read-only), HTTPS + SSH Ed25519, known_hosts | Clone a private GitHub repo over SSH |
 | M5 ✅ | Writing: create, edit, move, delete, multi-recipient encryption, commit/push, conflict UI, re-encrypt | Round trip with desktop `passage` including conflicts |
-| M6 | AutoFill extension: bulk identity store, OTP credentials, text insertion | Safari login plus 2FA fill |
+| M6 🟡 | AutoFill extension: bulk identity store, OTP credentials, text insertion | Safari login plus 2FA fill |
 | M7 | App Intents, Control Center control, generator presets, recipient health check, polish | — |
 | M8 | YubiKey via YubiKit (NFC/USB-C), `piv-p256` stanza (age-plugin-yubikey identities), in both the app and AutoFill | Decrypt with a YubiKey 5 over NFC |
 | M9 | Hardening review, privacy manifest, App Store submission (§11) | Approved on the App Store |
+
+M6 status: built; the iOS-side flow (enabling the provider in Settings, QuickType, Safari) needs a device. The `AutoFill` extension target (`de.nerdworks.passage.autofill`) handles passwords, one-time codes (iOS 18) and text insertion, with QuickType selections always going through Face ID. The AutoFill index holds only paths, domains, usernames and has-OTP flags: guessed from paths (`github.com/alice`), refined from entries the user decrypts, or all at once via Settings › Prepare AutoFill (one Face ID). Matching is on label boundaries (`github.com` ↔ `gist.github.com`, never `evilgithub.com`). No public suffix list yet. The picker UI is checked in the Simulator by hosting it in the app.
 
 G3 status: done for every store type (not only GitHub), via git commits rather than the Contents API. "Add This Device as Recipient" appends the matching form (classic or post-quantum) to every `.age-recipients`; readability is judged from stanza tags against the device's public key, without Face ID. Verified live: desktop-only store flagged, recipient committed as `age1tag` next to a classic desktop key, "0 of 3 readable" until a desktop re-encrypt, then everything decrypts.
 
@@ -237,6 +239,10 @@ Things `swift test` on the Mac can't cover:
 - [ ] TOTP code matches `oathtool`/another authenticator; the countdown ring advances.
 - [ ] Face ID prompt while opening an entry doesn't cause a re-prompt loop.
 - [ ] Clone a GitHub repo over SSH with the device's Secure Enclave key added as a deploy key; pull after a desktop push.
+- [ ] Enable Passage under Settings › General › AutoFill & Passwords; QuickType shows entries for github.com after a sync.
+- [ ] Safari login: pick an entry → one Face ID → username and password filled. Also from a QuickType suggestion.
+- [ ] One-time code field: Passage offers the code; text insertion (long-press › AutoFill › Passwords) inserts a chosen field.
+- [ ] AutoFill with a Files-folder store (does the security-scoped bookmark resolve inside the extension?).
 - [ ] Clone over SSH from a non-GitHub host: the fingerprint prompt appears once, and the host is listed under Known Hosts.
 
 ## 10. Risks and open questions

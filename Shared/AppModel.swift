@@ -3,6 +3,7 @@ import Foundation
 import KeyStore
 import LocalAuthentication
 import Observation
+import PassStore
 
 enum AppConfig {
     static let keychainService = "de.nerdworks.passage"
@@ -121,6 +122,19 @@ final class AppModel {
 
     func decrypt(_ data: Data) async throws -> Data {
         try await identityStore.decrypt(data, sessions: sessions, reason: String(localized: "Unlock your keys to decrypt"))
+    }
+
+    /// Decrypts every entry once (one authentication) to learn URLs and usernames for AutoFill.
+    func prepareAutoFill(store: StoreModel) async throws -> Int {
+        guard let local = store.store else { return 0 }
+        let identities = try await identityStore.unlockAll(sessions: sessions, reason: String(localized: "Unlock your keys to prepare AutoFill"))
+        var learned = 0
+        for entry in store.snapshot.entries {
+            guard let data = try? await local.read(entry), let plaintext = try? Age.decrypt(data, identities: identities) else { continue }
+            await AutoFillStore.learn(entry, from: Entry(String(decoding: plaintext, as: UTF8.self)))
+            learned += 1
+        }
+        return learned
     }
 
     func lock() {

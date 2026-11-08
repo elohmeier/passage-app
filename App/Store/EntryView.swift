@@ -102,7 +102,9 @@ struct EntryView: View {
             let ciphertext = try await store.read(entry)
             let plaintext = try await model.decrypt(ciphertext)
             let text = String(decoding: plaintext, as: UTF8.self)
-            phase = .decrypted(Entry(text), text: text)
+            let parsed = Entry(text)
+            phase = .decrypted(parsed, text: text)
+            await AutoFillStore.learn(entry, from: parsed)
         } catch {
             if store.readability?.unreadable.contains(entry) == true {
                 phase = .failed(String(localized: "This entry isn't encrypted to this device yet. Add the device as a recipient and run passage reencrypt on your computer."))

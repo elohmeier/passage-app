@@ -15,6 +15,7 @@ struct BrowserView: View {
     @State private var path = NavigationPath()
     @State private var query = ""
     @State private var debugEditor: EntryEditorView.Mode?
+    @State private var debugAutoFill: String?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -41,6 +42,12 @@ struct BrowserView: View {
             #if DEBUG
                 .onAppear(perform: applyDebugRoute)
                 .sheet(item: $debugEditor) { EntryEditorView(mode: $0) }
+                .sheet(isPresented: Binding(get: { debugAutoFill != nil }, set: { if !$0 { debugAutoFill = nil } })) {
+                    // The AutoFill extension's picker, hosted in the app for screenshots.
+                    CredentialPickerView(
+                        kind: .password, services: [debugAutoFill ?? ""], autoSelect: nil, cancel: { debugAutoFill = nil },
+                        complete: { _ in debugAutoFill = nil })
+                }
             #endif
             .navigationDestination(for: Route.self) { route in
                 switch route {
@@ -67,6 +74,7 @@ struct BrowserView: View {
             case "search": query = arg
             case "keys": path.append(Route.keys)
             case "new": debugEditor = .new(folder: arg)
+            case "autofill": debugAutoFill = arg
             case "identity":
                 path.append(Route.keys)
                 if let device = model.deviceIdentity { path.append(device) }
