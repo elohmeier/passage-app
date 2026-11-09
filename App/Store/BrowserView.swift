@@ -17,18 +17,25 @@ struct BrowserView: View {
     @State private var path = NavigationPath()
     @State private var query = ""
     @FocusState private var searchFocused: Bool
+    @State private var focusSearchWhenActive = false
+    @Environment(\.scenePhase) private var scenePhase
+
+    private func focusSearchIfActive() {
+        guard focusSearchWhenActive, scenePhase == .active else { return }
+        focusSearchWhenActive = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            searchFocused = true
+        }
+    }
     @State private var debugEditor: EntryEditorView.Mode?
     @State private var debugAutoFill: String?
 
     var body: some View {
         NavigationStack(path: $path) {
-            Group {
-                if query.isEmpty {
-                    FolderView(folder: "")
-                } else {
-                    SearchResultsView(results: store.snapshot.search(query))
-                }
-            }
+            // One view for both browsing and searching: swapping views when the query becomes
+            // non-empty would drop the search field's focus after the first keystroke.
+            FolderView(folder: "", query: query)
             .navigationTitle(store.name)
             .searchable(text: $query, prompt: "Search \(store.snapshot.entries.count) Passwords")
             .textInputAutocapitalization(.never)
@@ -51,9 +58,13 @@ struct BrowserView: View {
                     path.append(Route.entry(entry))
                 case .search:
                     path = NavigationPath()
-                    searchFocused = true
+                    focusSearchWhenActive = true
+                    focusSearchIfActive()
                 }
             }
+            // An intent can set the route while the app is still coming back from the
+            // background, when focusing does nothing. Apply it once the scene is active.
+            .onChange(of: scenePhase) { _, _ in focusSearchIfActive() }
             .searchFocused($searchFocused)
             #if DEBUG
                 .onAppear(perform: applyDebugRoute)
@@ -113,26 +124,35 @@ struct BrowserView: View {
 struct FolderView: View {
     @Environment(StoreModel.self) private var store
     let folder: String
+    /// Non-empty: show search results across the store instead of the folder.
+    var query: String = ""
     @State private var creating: EntryEditorView.Mode?
 
     var body: some View {
         let contents = store.snapshot.contents(of: folder)
+        let results = query.isEmpty ? [] : store.snapshot.search(query)
         List {
-            if folder.isEmpty {
-                SyncStatusSection()
-                RecipientStatusSection()
-            }
-            ForEach(contents.folders, id: \.self) { f in
-                NavigationLink(value: Route.folder(f)) {
-                    Label(EntryPath(f).name, systemImage: "folder")
+            if !query.isEmpty {
+                ForEach(results) { SearchResultRow(entry: $0) }
+            } else {
+                if folder.isEmpty {
+                    SyncStatusSection()
+                    RecipientStatusSection()
                 }
-            }
-            ForEach(contents.entries) { entry in
-                NavigationLink(value: Route.entry(entry)) { EntryLabel(entry: entry, title: entry.name) }
+                ForEach(contents.folders, id: \.self) { f in
+                    NavigationLink(value: Route.folder(f)) {
+                        Label(EntryPath(f).name, systemImage: "folder")
+                    }
+                }
+                ForEach(contents.entries) { entry in
+                    NavigationLink(value: Route.entry(entry)) { EntryLabel(entry: entry, title: entry.name) }
+                }
             }
         }
         .overlay {
-            if contents.folders.isEmpty && contents.entries.isEmpty && !store.isLoading {
+            if !query.isEmpty {
+                if results.isEmpty { ContentUnavailableView.search(text: query) }
+            } else if contents.folders.isEmpty && contents.entries.isEmpty && !store.isLoading {
                 ContentUnavailableView(
                     "No Passwords", systemImage: "tray",
                     description: Text("This folder contains no .age files."))
@@ -149,24 +169,19 @@ struct FolderView: View {
     }
 }
 
-struct SearchResultsView: View {
-    let results: [EntryPath]
+struct SearchResultRow: View {
+    let entry: EntryPath
 
     var body: some View {
-        List(results) { entry in
-            NavigationLink(value: Route.entry(entry)) {
-                VStack(alignment: .leading) {
-                    EntryLabel(entry: entry, title: entry.name)
-                    if !entry.folder.isEmpty {
-                        Text(entry.folder)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+        NavigationLink(value: Route.entry(entry)) {
+            VStack(alignment: .leading) {
+                EntryLabel(entry: entry, title: entry.name)
+                if !entry.folder.isEmpty {
+                    Text(entry.folder)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-        }
-        .overlay {
-            if results.isEmpty { ContentUnavailableView.search }
         }
     }
 }

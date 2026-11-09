@@ -7,6 +7,29 @@ import SwiftUI
 enum PendingRoute: Equatable {
     case entry(EntryPath)
     case search
+
+    /// Hands a route to the app across processes: an intent run by the Controls extension
+    /// can't reach the app's models, so it leaves the route in the App Group and the app takes
+    /// it when it becomes active. (iOS 27's allowedExecutionTargets would make this moot.)
+    @MainActor static func post(_ route: PendingRoute) {
+        let value = switch route {
+        case .search: "search"
+        case .entry(let entry): "entry:" + entry.path
+        }
+        AppModel.sharedDefaults.set([value, Date.now.timeIntervalSince1970] as [Any], forKey: "pendingRoute")
+    }
+
+    /// The posted route, if any and recent; clears it.
+    @MainActor static func take() -> PendingRoute? {
+        let defaults = AppModel.sharedDefaults
+        guard let stored = defaults.array(forKey: "pendingRoute"), let value = stored.first as? String,
+            let time = stored.last as? Double, Date.now.timeIntervalSince1970 - time < 60
+        else { return nil }
+        defaults.removeObject(forKey: "pendingRoute")
+        if value == "search" { return .search }
+        if value.hasPrefix("entry:") { return .entry(EntryPath(String(value.dropFirst(6)))) }
+        return nil
+    }
 }
 
 // Intents run in the app and the Controls extension, not in AutoFill.
@@ -139,7 +162,7 @@ struct OpenPasswordIntent: OpenIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        PassageEnvironment.model.pendingRoute = .entry(EntryPath(target.id))
+        route(.entry(EntryPath(target.id)))
         return .result()
     }
 }
@@ -150,9 +173,19 @@ struct SearchPasswordsIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        PassageEnvironment.model.pendingRoute = .search
+        route(.search)
         return .result()
     }
+}
+
+/// Navigates the app: directly when running in the app, via the App Group otherwise.
+@MainActor
+private func route(_ route: PendingRoute) {
+    #if CONTROLS_EXTENSION
+        PendingRoute.post(route)
+    #else
+        PassageEnvironment.model.pendingRoute = route
+    #endif
 }
 
 @MainActor

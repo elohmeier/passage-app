@@ -115,8 +115,11 @@ struct PassageApp: App {
             case .background:
                 model.lock()
                 YubiKeyService.shared.forgetPIN()
-            // Pick up changes from other devices whenever the app comes back.
-            case .active where store.gitConfig != nil: Task { await store.sync(.automatic) }
+            case .active:
+                // A Control Center button may have left a route for us.
+                if let route = PendingRoute.take() { model.pendingRoute = route }
+                // Pick up changes from other devices whenever the app comes back.
+                if store.gitConfig != nil { Task { await store.sync(.automatic) } }
             default: break
             }
         }
