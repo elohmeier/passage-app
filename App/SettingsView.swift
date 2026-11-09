@@ -5,6 +5,7 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(StoreModel.self) private var store
     @State private var confirmingClose = false
+    @State private var removingDeployKey: GitStoreConfig.GitHubLink?
     @State private var sshKey: String?
     @State private var autoFillStatus: String?
     @State private var preparing = false
@@ -105,8 +106,12 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .task { sshKey = try? store.deviceSSHKey().publicKeyLine(comment: "passage-ios") }
         .confirmationDialog("Close \(store.name)?", isPresented: $confirmingClose, titleVisibility: .visible) {
+            if let link = store.gitConfig?.gitHub {
+                Button("Close and Remove Deploy Key…") { removingDeployKey = link }
+            }
             Button("Close Store", role: .destructive) { store.close() }
         }
+        .sheet(item: $removingDeployKey) { RemoveDeployKeyView(link: $0) }
     }
 }
 

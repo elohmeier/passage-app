@@ -20,7 +20,8 @@ struct GitStoreConfig: Codable, Equatable {
     /// Set for stores connected through "Connect GitHub".
     var gitHub: GitHubLink?
 
-    struct GitHubLink: Codable, Equatable {
+    struct GitHubLink: Codable, Equatable, Identifiable {
+        var id: Int { deployKeyID }
         var fullName: String
         var deployKeyID: Int
     }
