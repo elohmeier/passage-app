@@ -1,5 +1,9 @@
+import KeyStore
 import PassStore
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "de.nerdworks.passage", category: "AutoFill")
 
 /// A passkey sign-in request: what's needed to build the assertion.
 struct PasskeyRequest: Equatable {
@@ -36,6 +40,8 @@ struct CredentialPickerView: View {
     @State private var working: EntryPath?
     @State private var error: String?
     @State private var textChoices: (EntryPath, Entry)?
+    /// Set when Face ID couldn't be shown automatically; the user continues by tapping.
+    @State private var needsTap: EntryPath?
 
     private var index: AutoFillIndex { AutoFillStore.load().updated(for: store.snapshot.entries) }
 
@@ -65,6 +71,14 @@ struct CredentialPickerView: View {
     var body: some View {
         NavigationStack {
             List {
+                if let needsTap {
+                    Section {
+                        Button("Continue with Face ID", systemImage: "faceid") { Task { await pick(needsTap) } }
+                            .bold()
+                    } footer: {
+                        Text(needsTap.path)
+                    }
+                }
                 if let error {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
@@ -104,7 +118,14 @@ struct CredentialPickerView: View {
                 }
             }
             .task {
-                if let autoSelect { await pick(autoSelect) }
+                // The extension's sheet may still be appearing, and Face ID is refused until
+                // it has (LAError.notInteractive). Wait, retry a few times, then ask for a tap.
+                guard let autoSelect else { return }
+                for attempt in 0..<4 {
+                    try? await Task.sleep(for: .milliseconds(attempt == 0 ? 350 : 700))
+                    if await pick(autoSelect, automatic: true) { return }
+                }
+                needsTap = autoSelect
             }
         }
     }
@@ -137,25 +158,35 @@ struct CredentialPickerView: View {
         .disabled(working != nil)
     }
 
-    private func pick(_ entry: EntryPath) async {
+    /// Decrypts `entry` and completes the request. Returns false if Face ID couldn't be shown
+    /// yet (only reported when `automatic`, so the caller can retry).
+    @discardableResult
+    private func pick(_ entry: EntryPath, automatic: Bool = false) async -> Bool {
         working = entry
         error = nil
         defer { working = nil }
         do {
-            let plaintext = try await model.decrypt(store.read(entry))
+            let plaintext: Data
+            do {
+                plaintext = try await model.decrypt(store.read(entry))
+            } catch KeyStoreError.notInteractive where automatic {
+                log.info("decrypt not interactive yet, will retry")
+                return false
+            }
+            needsTap = nil
             let content = Entry(String(decoding: plaintext, as: UTF8.self))
             await AutoFillStore.learn(entry, from: content)
             switch kind {
             case .password:
                 guard let password = content.password else {
                     error = String(localized: "This entry has no password.")
-                    return
+                    return true
                 }
                 complete(.password(user: content.username ?? entry.name, password: password))
             case .oneTimeCode:
                 guard let otp = content.otp else {
                     error = String(localized: "This entry has no one-time code.")
-                    return
+                    return true
                 }
                 complete(.oneTimeCode(otp.code()))
             case .text:
@@ -163,14 +194,16 @@ struct CredentialPickerView: View {
             case .passkey(let request):
                 guard let passkey = Passkey(entry: content), passkey.relyingParty.lowercased() == request.relyingParty.lowercased() else {
                     error = String(localized: "This entry has no passkey for \(request.relyingParty).")
-                    return
+                    return true
                 }
                 let (authenticatorData, signature) = try passkey.assertion(clientDataHash: request.clientDataHash)
                 complete(.passkey(passkey, authenticatorData: authenticatorData, signature: signature, clientDataHash: request.clientDataHash))
             }
         } catch {
+            log.error("pick failed: \(String(describing: error), privacy: .public)")
             self.error = error.localizedDescription
         }
+        return true
     }
 }
 

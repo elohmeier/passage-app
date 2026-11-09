@@ -58,6 +58,8 @@ public enum KeyStoreError: Error, Equatable, Sendable, LocalizedError {
     case notFound
     case corrupted(String)
     case cancelled
+    /// The Face ID prompt can't be shown right now (e.g. a sheet is still appearing).
+    case notInteractive
     case authenticationFailed(String)
     case invalidIdentity(String)
 
@@ -70,6 +72,7 @@ public enum KeyStoreError: Error, Equatable, Sendable, LocalizedError {
         case .notFound: "The key was not found in the keychain."
         case .corrupted(let m): "Stored key data is corrupted: \(m)"
         case .cancelled: "Authentication was cancelled."
+        case .notInteractive: "Face ID couldn't be shown right now."
         case .authenticationFailed(let m): "Authentication failed: \(m)"
         case .invalidIdentity(let m): m
         }

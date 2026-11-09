@@ -26,6 +26,7 @@ public struct LocalAuthenticator: Authenticator {
         } catch let error as LAError {
             switch error.code {
             case .userCancel, .appCancel, .systemCancel: throw .cancelled
+            case .notInteractive: throw .notInteractive
             default: throw .authenticationFailed(error.localizedDescription)
             }
         } catch {
