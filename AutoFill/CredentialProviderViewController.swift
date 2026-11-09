@@ -2,6 +2,9 @@ import AuthenticationServices
 import KeyStore
 import PassStore
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "de.nerdworks.passage", category: "AutoFill")
 
 /// The AutoFill extension. It reads the store the app already has (git clone or Files folder)
 /// and never syncs; decryption asks for Face ID inside the extension.
@@ -18,6 +21,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     // MARK: Requests
 
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        log.info("prepareCredentialList")
         show(.password, services: serviceIdentifiers)
     }
 
@@ -99,6 +103,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// website just gets an error. So that answer is only for entries that need our UI, e.g.
     /// a YubiKey tap.
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
+        log.info("provideCredentialWithoutUserInteraction type=\(credentialRequest.type.rawValue, privacy: .public)")
         guard let path = credentialRequest.credentialIdentity.recordIdentifier else {
             extensionContext.cancelRequest(withError: ASExtensionError(.credentialIdentityNotFound))
             return
@@ -115,6 +120,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 extensionContext.cancelRequest(withError: ASExtensionError(.userCanceled))
                 return
             } catch {
+                log.info("silent decrypt failed, asking for UI: \(String(describing: error), privacy: .public)")
                 extensionContext.cancelRequest(withError: ASExtensionError(.userInteractionRequired))
                 return
             }
@@ -146,6 +152,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     /// A QuickType suggestion was picked: decrypt that entry directly.
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {
+        log.info("prepareInterfaceToProvideCredential type=\(credentialRequest.type.rawValue, privacy: .public)")
         if let request = credentialRequest as? ASPasskeyCredentialRequest,
             let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity
         {

@@ -70,7 +70,38 @@ struct CredentialPickerView: View {
         return false
     }
 
+    /// While an entry picked in QuickType is being unlocked, show nothing but a neutral
+    /// placeholder: the list only appears if that fails or needs a tap.
+    @State private var autoSelecting = true
+
     var body: some View {
+        Group {
+            if autoSelect != nil && autoSelecting {
+                Color(uiColor: .systemBackground)
+                    .ignoresSafeArea()
+                    .overlay { ProgressView().opacity(working == nil ? 0 : 1) }
+            } else {
+                picker
+            }
+        }
+        .task {
+            // The extension's sheet may still be appearing, and Face ID is refused until it
+            // has (LAError.notInteractive). Try right away, retry a few times, then ask for a tap.
+            guard let autoSelect else { return }
+            for attempt in 0..<5 {
+                if attempt > 0 { try? await Task.sleep(for: .milliseconds(attempt == 1 ? 300 : 700)) }
+                if await pick(autoSelect, automatic: true) {
+                    // Completed, or failed with an error the list shows.
+                    if error != nil { autoSelecting = false }
+                    return
+                }
+            }
+            needsTap = autoSelect
+            autoSelecting = false
+        }
+    }
+
+    private var picker: some View {
         NavigationStack {
             List {
                 if let needsTap {
@@ -120,16 +151,6 @@ struct CredentialPickerView: View {
                     TextChoiceView(entry: entry, content: content) { complete(.text($0)) }
                 }
             }
-            .task {
-                // The extension's sheet may still be appearing, and Face ID is refused until
-                // it has (LAError.notInteractive). Wait, retry a few times, then ask for a tap.
-                guard let autoSelect else { return }
-                for attempt in 0..<4 {
-                    try? await Task.sleep(for: .milliseconds(attempt == 0 ? 350 : 700))
-                    if await pick(autoSelect, automatic: true) { return }
-                }
-                needsTap = autoSelect
-            }
         }
     }
 
@@ -172,6 +193,10 @@ struct CredentialPickerView: View {
             let plaintext: Data, userVerified: Bool
             do {
                 (plaintext, userVerified) = try await model.decryptVerifying(store.read(entry))
+            } catch KeyStoreError.cancelled where automatic {
+                // Face ID dismissed for a QuickType pick: back to the page, not to our list.
+                cancel()
+                return true
             } catch KeyStoreError.notInteractive where automatic {
                 log.info("decrypt not interactive yet, will retry")
                 return false
