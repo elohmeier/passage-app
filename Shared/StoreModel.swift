@@ -284,11 +284,13 @@ final class StoreModel {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         let name = UIDevice.current.name
-        let changed = try await store.addRecipient(
-            present: Set(device.recipients), comment: "\(name) (Passage, \(f.string(from: .now)))"
-        ) { device.recommendedRecipient(alongside: $0) }
-        guard !changed.isEmpty else { return }
-        await commit("Add \(name) (Passage) as recipient.")
+        try await withWriteLock {
+            let changed = try await store.addRecipient(
+                present: Set(device.recipients), comment: "\(name) (Passage, \(f.string(from: .now)))"
+            ) { device.recommendedRecipient(alongside: $0) }
+            guard !changed.isEmpty else { return }
+            await commitLocked("Add \(name) (Passage) as recipient.")
+        }
     }
 
     /// Set after a sync that had to keep both sides of conflicting edits.
@@ -315,15 +317,24 @@ final class StoreModel {
     /// Pulls and pushes (git), then rescans. Local commits stay if the network fails and go
     /// out with the next sync.
     func sync(_ trigger: SyncTrigger = .user) async {
-        guard let git, let gitConfig else {
+        guard git != nil else {
             await refresh()
             return
         }
-        if trigger == .automatic && !isOnline {
-            pendingAutomaticSync = true
+        if trigger == .automatic && (!isOnline || isSyncing) {
+            if !isOnline { pendingAutomaticSync = true }
             return
         }
-        guard !isSyncing else { return }
+        do {
+            try await withWriteLock { await syncLocked(trigger) }
+        } catch {
+            syncProblem = error.localizedDescription
+        }
+    }
+
+    /// The sync itself; callers hold the write lock.
+    private func syncLocked(_ trigger: SyncTrigger) async {
+        guard let git, let gitConfig else { return }
         isSyncing = true
         let endBackgroundTask = Self.beginBackgroundTask?()
         defer {
@@ -377,31 +388,50 @@ final class StoreModel {
         GitRepo.Signature(name: "Passage on \(UIDevice.current.name)", email: "passage@\(UIDevice.current.model.lowercased()).invalid")
     }
 
-    /// Encrypts and writes an entry, then commits and syncs (git).
-    func save(_ entry: EntryPath, text: String, isNew: Bool) async throws {
+    /// Encrypts and writes an entry, then commits and syncs (git). Returns true if the change
+    /// reached the remote (always true for Files folders, which have no remote step).
+    @discardableResult
+    func save(_ entry: EntryPath, text: String, isNew: Bool, message: String? = nil) async throws -> Bool {
         guard let store else { throw StoreError.accessDenied }
-        try await store.save(entry, plaintext: Data(text.utf8))
-        await commit(isNew ? "Add given password for \(entry.path) to store." : "Edit password for \(entry.path) using Passage.")
+        return try await withWriteLock {
+            try await store.save(entry, plaintext: Data(text.utf8))
+            return await commitLocked(
+                message ?? (isNew ? "Add given password for \(entry.path) to store." : "Edit password for \(entry.path) using Passage."))
+        }
     }
 
     /// Saves edited content under a new name and removes the old one, as one commit.
     func rename(_ from: EntryPath, to: EntryPath, text: String) async throws {
         guard let store else { throw StoreError.accessDenied }
-        try await store.save(to, plaintext: Data(text.utf8))
-        try await store.delete(from)
-        await commit("Rename \(from.path) to \(to.path).")
+        try await withWriteLock {
+            try await store.save(to, plaintext: Data(text.utf8))
+            try await store.delete(from)
+            await commitLocked("Rename \(from.path) to \(to.path).")
+        }
     }
 
     func delete(_ entry: EntryPath) async throws {
         guard let store else { throw StoreError.accessDenied }
-        try await store.delete(entry)
-        await commit("Remove \(entry.path) from store.")
+        try await withWriteLock {
+            try await store.delete(entry)
+            await commitLocked("Remove \(entry.path) from store.")
+        }
     }
 
     func move(_ from: EntryPath, to: EntryPath, decrypt: @escaping @Sendable (Data) async throws -> Data) async throws {
         guard let store else { throw StoreError.accessDenied }
-        try await store.move(from, to: to, decrypt: decrypt)
-        await commit("Rename \(from.path) to \(to.path).")
+        try await withWriteLock {
+            try await store.move(from, to: to, decrypt: decrypt)
+            await commitLocked("Rename \(from.path) to \(to.path).")
+        }
+    }
+
+    /// Serializes git work between the app and its extensions (AutoFill saves passkeys).
+    private var gitLock: ProcessLock?
+
+    private func withWriteLock<T>(_ body: () async throws -> T) async throws -> T {
+        guard let gitLock else { return try await body() }
+        return try await gitLock.withLock(body)
     }
 
     /// The recipients a new or edited entry at `entry` will be encrypted to.
@@ -414,17 +444,22 @@ final class StoreModel {
         }
     }
 
-    private func commit(_ message: String) async {
-        if let git {
-            do {
-                try await git.commitAll(message: message, author: Self.author)
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            await sync()
-        } else {
+    /// Commits everything and syncs; callers hold the write lock. Returns true if the commit
+    /// reached the remote.
+    @discardableResult
+    private func commitLocked(_ message: String) async -> Bool {
+        guard let git else {
             await refresh()
+            return true
         }
+        do {
+            try await git.commitAll(message: message, author: Self.author)
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+        await syncLocked(.user)
+        return syncProblem == nil
     }
 
     private func storedCredentials(for config: GitStoreConfig) -> GitCredentials {
@@ -440,6 +475,7 @@ final class StoreModel {
         let repo = try GitRepo(opening: root)
         git = repo
         gitConfig = config
+        gitLock = ProcessLock(path: root.appending(path: ".git/passage.lock").path)
         store = LocalStore(root: root)
         Task {
             lastCommit = try? await repo.headCommit()
@@ -471,6 +507,7 @@ final class StoreModel {
         store = nil
         git = nil
         gitConfig = nil
+        gitLock = nil
         lastCommit = nil
         syncProblem = nil
         lastSynced = nil

@@ -11,8 +11,27 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
         public var hasOTP: Bool
         /// True once filled in from the decrypted entry rather than guessed from the path.
         public var fromContent: Bool
+        /// Set for passkey entries (learned from content: needs the credential ID).
+        public var passkey: PasskeyInfo?
 
         public var id: String { path }
+
+        public init(path: String, domains: [String], username: String?, hasOTP: Bool, fromContent: Bool, passkey: PasskeyInfo? = nil) {
+            self.path = path
+            self.domains = domains
+            self.username = username
+            self.hasOTP = hasOTP
+            self.fromContent = fromContent
+            self.passkey = passkey
+        }
+    }
+
+    /// What iOS needs to offer a passkey: public identifiers only.
+    public struct PasskeyInfo: Codable, Equatable, Sendable {
+        public var relyingParty: String
+        public var userName: String
+        public var credentialID: Data
+        public var userHandle: Data
     }
 
     public var items: [Item]
@@ -40,6 +59,12 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
         if let username = content.username { item.username = username }
         item.hasOTP = content.otp != nil
         item.fromContent = true
+        if let passkey = Passkey(entry: content) {
+            item.passkey = PasskeyInfo(
+                relyingParty: passkey.relyingParty, userName: passkey.userName, credentialID: passkey.credentialID,
+                userHandle: passkey.userHandle)
+            item.domains = [passkey.relyingParty] + item.domains.filter { $0 != passkey.relyingParty }
+        }
         if let i = items.firstIndex(where: { $0.path == entry.path }) {
             items[i] = item
         } else {
@@ -80,6 +105,15 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
 }
 
 public enum AutoFillMatcher {
+    /// Passkey items for a relying party, optionally limited to the credential IDs the site
+    /// allows. Passkeys are bound to their exact RP ID, so no subdomain matching here.
+    public static func passkeys(_ items: [AutoFillIndex.Item], relyingParty: String, allowed: [Data] = []) -> [AutoFillIndex.Item] {
+        items.filter { item in
+            guard let p = item.passkey, p.relyingParty.lowercased() == relyingParty.lowercased() else { return false }
+            return allowed.isEmpty || allowed.contains(p.credentialID)
+        }
+    }
+
     /// Items matching a website or app's associated domain, best first: exact host, then the
     /// entry's domain as a parent of the host. Matching is on label boundaries, so
     /// `github.com` matches `gist.github.com` but never `evilgithub.com`.

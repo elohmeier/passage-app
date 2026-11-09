@@ -451,3 +451,44 @@ import Testing
         #expect(output.lowercased().contains(Passkey.aaguid.uuidString.lowercased()))
     }
 }
+
+@Suite struct ProcessLockTests {
+    @Test func excludesConcurrentHolders() async throws {
+        let lock = ProcessLock(path: FileManager.default.temporaryDirectory.appending(path: "lock-\(UUID().uuidString)").path)
+        let log = LockLog()
+        async let first: Void = lock.withLock {
+            await log.add("first in")
+            try await Task.sleep(for: .milliseconds(200))
+            await log.add("first out")
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        try await lock.withLock { await log.add("second in") }
+        try await first
+        #expect(await log.events == ["first in", "first out", "second in"])
+    }
+
+    @Test func timesOut() async throws {
+        let lock = ProcessLock(path: FileManager.default.temporaryDirectory.appending(path: "lock-\(UUID().uuidString)").path)
+        try await lock.withLock {
+            await #expect(throws: ProcessLock.LockTimeout.self) { try await lock.withLock(timeout: .milliseconds(100)) {} }
+        }
+    }
+
+    actor LockLog {
+        var events: [String] = []
+        func add(_ e: String) { events.append(e) }
+    }
+}
+
+@Suite struct PasskeyIndexTests {
+    @Test func learnsAndMatchesPasskeys() {
+        let passkey = Passkey.create(relyingParty: "github.com", userName: "alice", userHandle: Data([7]))
+        var index = AutoFillIndex().updated(for: [passkey.suggestedPath, EntryPath("github.com/alice")])
+        index.learn(passkey.suggestedPath, from: Entry(passkey.entryText))
+        let items = index.items
+        #expect(AutoFillMatcher.passkeys(items, relyingParty: "github.com").map(\.path) == ["passkeys/github.com/alice"])
+        #expect(AutoFillMatcher.passkeys(items, relyingParty: "GitHub.com", allowed: [passkey.credentialID]).count == 1)
+        #expect(AutoFillMatcher.passkeys(items, relyingParty: "github.com", allowed: [Data([1, 2])]).isEmpty)
+        #expect(AutoFillMatcher.passkeys(items, relyingParty: "gist.github.com").isEmpty, "exact RP ID only")
+    }
+}

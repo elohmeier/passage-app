@@ -43,6 +43,22 @@ struct PassageApp: App {
                                 do { try await store.addDeviceAsRecipient() } catch { store.errorMessage = error.localizedDescription }
                             }
                         }
+                        // `-PassageDebugPasskey <rp>` creates a passkey through the extension's save path.
+                        if let rp = UserDefaults.standard.string(forKey: "PassageDebugPasskey") {
+                            Task {
+                                try? await Task.sleep(for: .seconds(2))
+                                let passkey = Passkey.create(relyingParty: rp, userName: "simulator", userHandle: Data("sim-user".utf8))
+                                do {
+                                    let synced = try await store.save(
+                                        passkey.suggestedPath, text: passkey.entryText, isNew: true,
+                                        message: "Add passkey for simulator at \(rp).")
+                                    await AutoFillStore.learn(passkey.suggestedPath, from: Entry(passkey.entryText))
+                                    print("PASSKEY_SAVED synced=\(synced)")
+                                } catch {
+                                    store.errorMessage = error.localizedDescription
+                                }
+                            }
+                        }
                         // `-PassageDebugSave <path>` writes a test entry through the normal save path.
                         if let path = UserDefaults.standard.string(forKey: "PassageDebugSave") {
                             Task {

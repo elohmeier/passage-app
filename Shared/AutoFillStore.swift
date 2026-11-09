@@ -49,6 +49,12 @@ enum AutoFillStore {
         guard await store.state().isEnabled else { return }
         var identities: [any ASCredentialIdentity] = []
         for item in index.items {
+            if let p = item.passkey {
+                identities.append(ASPasskeyCredentialIdentity(
+                    relyingPartyIdentifier: p.relyingParty, userName: p.userName, credentialID: p.credentialID,
+                    userHandle: p.userHandle, recordIdentifier: item.path))
+                continue
+            }
             let user = item.username ?? EntryPath(item.path).name
             for domain in item.domains {
                 let service = ASCredentialServiceIdentifier(identifier: domain, type: .domain)

@@ -60,8 +60,12 @@ struct BrowserView: View {
                 .sheet(item: $debugEditor) { EntryEditorView(mode: $0) }
                 .sheet(isPresented: Binding(get: { debugAutoFill != nil }, set: { if !$0 { debugAutoFill = nil } })) {
                     // The AutoFill extension's picker, hosted in the app for screenshots.
+                    let target = debugAutoFill ?? ""
+                    let kind: PickerKind = target.hasPrefix("passkey:")
+                        ? .passkey(PasskeyRequest(relyingParty: String(target.dropFirst(8)), clientDataHash: Data(count: 32), allowedCredentials: []))
+                        : .password
                     CredentialPickerView(
-                        kind: .password, services: [debugAutoFill ?? ""], autoSelect: nil, cancel: { debugAutoFill = nil },
+                        kind: kind, services: [target], autoSelect: nil, cancel: { debugAutoFill = nil },
                         complete: { _ in debugAutoFill = nil })
                 }
             #endif
@@ -92,6 +96,7 @@ struct BrowserView: View {
             case "keys": path.append(Route.keys)
             case "new": debugEditor = .new(folder: arg)
             case "autofill": debugAutoFill = arg
+            case "autofillpasskey": debugAutoFill = "passkey:" + arg
             case "identity":
                 if let device = model.deviceIdentity { path.append(Route.identity(device)) }
             case "settings": path.append(Route.settings)

@@ -184,7 +184,7 @@ CryptoKit.
   - `provideCredentialWithoutUserInteraction` always returns `userInteractionRequired`, because every decrypt needs biometrics. The SE key is accessible to the extension through the shared access group.
   - Matching uses eTLD+1 from a bundled public suffix list, with an exact-host bonus. Results are split into Suggested and All.
   - Text insertion (`prepareInterfaceForUserChoosingTextToInsert`) for arbitrary fields.
-  - Passkeys are out of scope for v1. Storing passkeys as age-encrypted entries is a possible later experiment.
+  - **Passkeys** (implemented, see §14).
 - **App Intents:**
   - Sync Store
   - Open Entry (an `AppEntity` over paths)
@@ -253,6 +253,8 @@ Things `swift test` on the Mac can't cover:
 - [ ] Control Center: add the Sync and Search Passwords controls; Sync works with the app closed (background, SSH deploy key), Search opens the app with search focused.
 - [ ] YubiKey (5 series, NFC): Add YubiKey finds the age-plugin-yubikey slot; an entry encrypted on the Mac with `-r age1yubikey1…` decrypts after PIN + tap; wrong PIN shows retries; the PIN isn't asked again until the app locks.
 - [ ] YubiKey over USB-C (plugged in): same without NFC.
+- [ ] Passkeys: create one on webauthn.io (Face ID, "Save Passkey in Passage"), then the commit shows up on GitHub; sign in with it; sign in from QuickType; the entry decrypts on the Mac and imports into KeePassXC.
+- [ ] Passkey created while offline: "Saved on this iPhone" note; it's pushed with the next sync from the app.
 - [ ] Clone over SSH from a non-GitHub host: the fingerprint prompt appears once, and the host is listed under Known Hosts.
 
 ## 10. Risks and open questions
@@ -352,3 +354,15 @@ For users with no store yet:
 G1 status: `GitHubKit` (device flow, installations/repositories, contents probe, deploy keys) and the Connect GitHub sheet are built and tested against stubbed responses. Per-store SSH keys (G2's first half) are in. Verified live in the Simulator against github.com on 2026-11-08: device flow sign-in, installation repositories, deploy key "Passage on <device>" (ecdsa-sha2-nistp256 from the Secure Enclave, read/write) added to a private test repo, SSH clone, decrypt, and a token-free SSH pull on relaunch. The GitHub App is https://github.com/apps/passage-for-ios (client ID in `AppConfig`, no client secret or private key exists). All GitHubKit traffic uses an ephemeral, cache-less URLSession: GitHub sends ETags on the token endpoint, and `URLSession.shared` answered device-flow polls from cache (and could have cached tokens on disk).
 
 **Open:** the GitHub App has to be registered under your account; it needs a name, a homepage, and device flow enabled. Its client ID is public and goes into the app. App Review: the demo store keeps working without GitHub, so review doesn't depend on a GitHub account.
+
+## 14. Passkeys
+
+Passkeys live in the store as ordinary age-encrypted entries, so they work on every platform the store reaches.
+
+- **Format:** KeePassXC's attributes (`KPEX_PASSKEY_RELYING_PARTY`, `_USERNAME`, `_CREDENTIAL_ID`, `_USER_HANDLE`, `_PRIVATE_KEY_PEM`, `_FLAG_BE`, `_FLAG_BS`). The PKCS#8 PEM is a `key: |` multiline value. New passkeys go to `passkeys/<rp id>/<user>`.
+- **Key protection:** the ES256 key is a software key and exportable, which is the point: it works on Linux and in KeePassXC too. Its protection is the store's: the Secure Enclave or YubiKey protects the age identity, not the passkey. Device-bound Secure Enclave passkeys could be offered later for sites that don't need portability.
+- **Sign-in** (AutoFill): passkeys for the exact RP ID (and the site's allowed credential IDs) are offered → decrypt (Face ID) → assertion with flags UP|UV|BE|BS and counter 0 (synced passkeys can't keep a counter). QuickType passkey identities go through the same path.
+- **Registration** (AutoFill): user verification (`deviceOwnerAuthentication`) → new key → saved, committed and **pushed from the extension**. Encrypting needs only the recipients' public keys, so no Face ID for the key. If the push fails, the commit stays in the shared clone and the app pushes it on its next sync; the sheet says so. Existing passkeys in `excludedCredentials` → `matchedExcludedCredential`.
+- **Concurrency:** app and extensions serialize git work with a `flock` on `.git/passage.lock` (`ProcessLock`), held across write → commit → sync.
+- **Verification:** registration and assertion are checked by py_webauthn in `swift test`. In the Simulator, a passkey saved through the extension's save path was committed, pushed, encrypted to all three recipients, and decrypted on the Mac with plain `age` to the KeePassXC format.
+- **Later:** PRF extension, iOS 26 signal API (credential updates/deletes), Credential Exchange import from Apple Passwords, KeePassXC export/import helpers.

@@ -130,8 +130,21 @@ private struct EntryDetail: View {
 
     var body: some View {
         List {
+            if let passkey = Passkey(entry: entry) {
+                Section {
+                    LabeledContent("Website", value: passkey.relyingParty)
+                    LabeledContent("Account", value: passkey.userName.isEmpty ? "—" : passkey.userName)
+                    LabeledContent("Credential ID") {
+                        Text(Base64URL.encode(passkey.credentialID)).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
+                    }
+                } header: {
+                    Label("Passkey", systemImage: "person.badge.key")
+                } footer: {
+                    Text("Used through AutoFill when \(passkey.relyingParty) asks for a passkey. The private key is stored in this entry, encrypted like your passwords.")
+                }
+            }
             Section {
-                if let password = entry.password {
+                if let password = entry.password, !password.isEmpty {
                     SecretRow(label: "Password", value: password, copy: copy)
                 }
                 if let username = entry.username {
@@ -146,7 +159,8 @@ private struct EntryDetail: View {
             }
 
             let others = entry.fields.filter { f in
-                !["username", "login", "user", "url"].contains(f.key?.lowercased() ?? "") || f.value != value(for: f.key)
+                (!["username", "login", "user", "url"].contains(f.key?.lowercased() ?? "") || f.value != value(for: f.key))
+                    && !(f.key?.uppercased().hasPrefix("KPEX_PASSKEY_") ?? false)
             }
             if !others.isEmpty {
                 Section("Fields") {

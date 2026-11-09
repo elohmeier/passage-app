@@ -1,14 +1,24 @@
 import PassStore
 import SwiftUI
 
-enum PickerKind {
+/// A passkey sign-in request: what's needed to build the assertion.
+struct PasskeyRequest: Equatable {
+    let relyingParty: String
+    let clientDataHash: Data
+    /// Credential IDs the site accepts; empty means any.
+    let allowedCredentials: [Data]
+}
+
+enum PickerKind: Equatable {
     case password, oneTimeCode, text
+    case passkey(PasskeyRequest)
 }
 
 enum PickerCompletion {
     case password(user: String, password: String)
     case oneTimeCode(String)
     case text(String)
+    case passkey(Passkey, authenticatorData: Data, signature: Data, clientDataHash: Data)
 }
 
 /// Suggested entries for the requesting site, plus search over the whole store. Picking an
@@ -30,15 +40,26 @@ struct CredentialPickerView: View {
     private var index: AutoFillIndex { AutoFillStore.load().updated(for: store.snapshot.entries) }
 
     private var suggested: [EntryPath] {
+        if case .passkey(let request) = kind {
+            return AutoFillMatcher.passkeys(index.items, relyingParty: request.relyingParty, allowed: request.allowedCredentials)
+                .map { EntryPath($0.path) }
+        }
         var seen = Set<String>()
         return services.flatMap { AutoFillMatcher.match(index.items, service: $0) }
+            .filter { $0.passkey == nil }
             .filter { kind != .oneTimeCode || $0.hasOTP || !$0.fromContent }
             .filter { seen.insert($0.path).inserted }
             .map { EntryPath($0.path) }
     }
 
     private var serviceHost: String? {
-        services.first.flatMap { URLComponents(string: $0.contains("://") ? $0 : "https://" + $0)?.host }
+        if case .passkey(let request) = kind { return request.relyingParty }
+        return services.first.flatMap { URLComponents(string: $0.contains("://") ? $0 : "https://" + $0)?.host }
+    }
+
+    private var isPasskey: Bool {
+        if case .passkey = kind { return true }
+        return false
     }
 
     var body: some View {
@@ -48,12 +69,18 @@ struct CredentialPickerView: View {
                     Section { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
                 }
                 if query.isEmpty, !suggested.isEmpty {
-                    Section("Suggested for \(serviceHost ?? "this site")") {
+                    Section(isPasskey ? "Passkeys for \(serviceHost ?? "this site")" : "Suggested for \(serviceHost ?? "this site")") {
                         ForEach(suggested) { row($0) }
                     }
                 }
-                Section(query.isEmpty ? "All Passwords" : "Results") {
-                    ForEach(store.snapshot.search(query)) { row($0) }
+                if !isPasskey {
+                    Section(query.isEmpty ? "All Passwords" : "Results") {
+                        ForEach(store.snapshot.search(query)) { row($0) }
+                    }
+                } else if suggested.isEmpty {
+                    ContentUnavailableView(
+                        "No Passkey", systemImage: "person.badge.key",
+                        description: Text("Passage has no passkey for \(serviceHost ?? "this site"). If you created one elsewhere, open Passage and run Prepare AutoFill after syncing."))
                 }
             }
             .overlay {
@@ -87,6 +114,7 @@ struct CredentialPickerView: View {
         case .password: "Passwords"
         case .oneTimeCode: "One-Time Codes"
         case .text: "Insert from Passage"
+        case .passkey: "Sign In with a Passkey"
         }
     }
 
@@ -132,6 +160,13 @@ struct CredentialPickerView: View {
                 complete(.oneTimeCode(otp.code()))
             case .text:
                 textChoices = (entry, content)
+            case .passkey(let request):
+                guard let passkey = Passkey(entry: content), passkey.relyingParty.lowercased() == request.relyingParty.lowercased() else {
+                    error = String(localized: "This entry has no passkey for \(request.relyingParty).")
+                    return
+                }
+                let (authenticatorData, signature) = try passkey.assertion(clientDataHash: request.clientDataHash)
+                complete(.passkey(passkey, authenticatorData: authenticatorData, signature: signature, clientDataHash: request.clientDataHash))
             }
         } catch {
             self.error = error.localizedDescription

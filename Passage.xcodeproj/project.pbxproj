@@ -194,8 +194,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				AA0000000000000000000403 /* AutoFill */,
 				AA0000000000000000000402 /* Shared */,
+				AA0000000000000000000403 /* AutoFill */,
 			);
 			name = AutoFill;
 			packageProductDependencies = (
@@ -221,8 +221,8 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				AA0000000000000000000404 /* Controls */,
 				AA0000000000000000000402 /* Shared */,
+				AA0000000000000000000404 /* Controls */,
 			);
 			name = Controls;
 			packageProductDependencies = (
@@ -390,16 +390,16 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Config/Passage.entitlements;
-				INFOPLIST_FILE = "Config/Passage-Info.plist";
-				INFOPLIST_KEY_NFCReaderUsageDescription = "Passage reads your YubiKey to decrypt passwords protected by it.";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Passage-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Passage;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Passage reads your YubiKey to decrypt passwords protected by it.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Passage uses Face ID to unlock your keys.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -426,16 +426,16 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Config/Passage.entitlements;
-				INFOPLIST_FILE = "Config/Passage-Info.plist";
-				INFOPLIST_KEY_NFCReaderUsageDescription = "Passage reads your YubiKey to decrypt passwords protected by it.";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Config/Passage-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Passage;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NFCReaderUsageDescription = "Passage reads your YubiKey to decrypt passwords protected by it.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "Passage uses Face ID to unlock your keys.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -460,7 +460,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/AutoFill.entitlements;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AUTOFILL_EXTENSION $(inherited)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -479,6 +478,7 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AUTOFILL_EXTENSION $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -488,7 +488,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/AutoFill.entitlements;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AUTOFILL_EXTENSION $(inherited)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -507,6 +506,7 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "AUTOFILL_EXTENSION $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -516,7 +516,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/Controls.entitlements;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CONTROLS_EXTENSION $(inherited)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -535,6 +534,7 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CONTROLS_EXTENSION $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -544,7 +544,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Config/Controls.entitlements;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CONTROLS_EXTENSION $(inherited)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D7DW22G9T5;
@@ -563,6 +562,7 @@
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CONTROLS_EXTENSION $(inherited)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
