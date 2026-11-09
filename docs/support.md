@@ -1,3 +1,8 @@
+---
+title: Support
+permalink: /support/
+---
+
 # Passage — Support
 
 Passage is an iOS app for [passage](https://github.com/FiloSottile/passage) password stores, encrypted with [age](https://age-encryption.org).
@@ -26,4 +31,4 @@ Settings ▸ General ▸ AutoFill & Passwords ▸ enable Passage. Passwords, one
 
 ## Contact
 
-Write to CONTACT_EMAIL.
+Open an issue at <https://github.com/elohmeier/passage-app/issues>. Please never include passwords, keys or other secrets in an issue.

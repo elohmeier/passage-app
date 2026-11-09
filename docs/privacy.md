@@ -1,3 +1,8 @@
+---
+title: Privacy Policy
+permalink: /privacy/
+---
+
 # Passage — Privacy Policy
 
 *Last updated: November 9, 2026*
@@ -23,4 +28,4 @@ Nothing. Passage has no accounts, no analytics, no crash reporting, no advertisi
 
 ## Contact
 
-Questions: see the support page, or write to CONTACT_EMAIL.
+Questions: open an issue at <https://github.com/elohmeier/passage-app/issues>.

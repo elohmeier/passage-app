@@ -16,7 +16,9 @@ See [PLAN.md](PLAN.md) for the design and milestones.
   - `KeyStore`: Secure Enclave identities, imported keys, unlock sessions.
   - `PassStore`: entry parser, OTP, store scanning and search, Files-folder access.
   - `GitSync`: libgit2 (vendored upstream, built with SwiftPM): clone, fetch, fast-forward pull.
-- `App/`: the SwiftUI app.
+- `App/`, `AutoFill/`, `Controls/`, `Shared/`: the SwiftUI app and its extensions.
+- `docs/`: the website (GitHub Pages): privacy policy and support.
+- `AppStore/`: App Store metadata and review notes.
 
 ## Development
 
@@ -26,6 +28,10 @@ libgit2 is a submodule pinned to upstream v1.9.2: clone with `--recursive` or ru
 
     just test    # package tests
     just build   # iOS app, simulator, unsigned
+
+## License
+
+MIT, see [LICENSE](LICENSE). libgit2 is GPLv2 with a linking exception.
 
 ## Acknowledgements
 

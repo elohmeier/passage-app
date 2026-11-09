@@ -46,9 +46,10 @@ password,age,passage,pass,git,encryption,passkey,totp,yubikey,2fa,otp,secure enc
 
 ## URLs
 
-- Support URL: SUPPORT_URL (docs/support.md, published)
-- Privacy Policy URL: PRIVACY_URL (docs/privacy.md, published)
+- Support URL: https://elohmeier.github.io/passage-app/support/
+- Privacy Policy URL: https://elohmeier.github.io/passage-app/privacy/
 
 ## App Privacy (nutrition label)
 
 Data Not Collected.
+- Marketing URL: https://elohmeier.github.io/passage-app/
