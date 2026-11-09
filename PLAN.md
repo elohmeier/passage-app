@@ -273,6 +273,13 @@ Things `swift test` on the Mac can't cover:
 - **YubiKey ships in v1** (M8).
 - **Device testing goes through TestFlight.** There's no iPhone for local runs, so on-device checks (Secure Enclave, Face ID, AutoFill, NFC) are batched into TestFlight builds. Until then, Secure Enclave code is tested with `swift test` on an Apple-silicon Mac, which has a Secure Enclave too.
 
+## 13. Release signing
+
+- `just testflight` archives and uploads with the App Store Connect API key `HMVYBQ5S6S` (App Manager; `.p8` in `~/Sync/iOS`, not in the repo) and a **local** Apple Distribution certificate in the login keychain, using the existing App Store provisioning profiles. `just upload` uploads an existing archive.
+- The App Manager key can't see certificates, so it can't create or regenerate profiles. When capabilities change (new entitlement, new extension), run one export with Xcode signed in (`just upload` without the key) to regenerate the profiles, or switch to an Admin-role key.
+- The first `codesign` use of the distribution key needs a GUI approval ("Always Allow") in a Terminal session.
+- Exports run with a system-only `PATH` (Homebrew's rsync breaks Xcode's packaging).
+
 ## 12. GitHub: making a GitHub-hosted store effortless
 
 Today the user has to create a token, or copy a public key into GitHub's settings by hand. The goal is: tap "Connect GitHub", approve in the browser, pick the repository, done. After that the app holds **no GitHub credential at all**, only a hardware-bound SSH key that can reach exactly one repository.
