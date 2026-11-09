@@ -225,7 +225,9 @@ v1 = M0 through M9. All three of git, Files folder and YubiKey ship in v1.
 
 ### On-device checklist
 
-Verified on build 4 (2026-11-09): passkey registration and sign-in on webauthn.io; the extension committed and pushed `passkeys/webauthn.io/Test.age` to the real store.
+Verified on build 6 (2026-11-09): passkey sign-in on webauthn.io (build 4 registered it but sign-in failed with LAError.notInteractive; fixed by retrying Face ID until the sheet is up, with a tap fallback).
+
+Verified on build 4 (2026-11-09): passkey registration on webauthn.io; the extension committed and pushed `passkeys/webauthn.io/Test.age` to the real store.
 
 Verified on build 3 (2026-11-09): device key, desktop re-encrypt → pull → decrypt, AutoFill in Safari, no alert after unlock, Connect GitHub (including reconnect after Safari), Keys detail page.
 
@@ -363,7 +365,7 @@ Passkeys live in the store as ordinary age-encrypted entries, so they work on ev
 
 - **Format:** KeePassXC's attributes (`KPEX_PASSKEY_RELYING_PARTY`, `_USERNAME`, `_CREDENTIAL_ID`, `_USER_HANDLE`, `_PRIVATE_KEY_PEM`, `_FLAG_BE`, `_FLAG_BS`). The PKCS#8 PEM is a `key: |` multiline value. New passkeys go to `passkeys/<rp id>/<user>`.
 - **Key protection:** the ES256 key is a software key and exportable, which is the point: it works on Linux and in KeePassXC too. Its protection is the store's: the Secure Enclave or YubiKey protects the age identity, not the passkey. Device-bound Secure Enclave passkeys could be offered later for sites that don't need portability.
-- **Sign-in** (AutoFill): passkeys for the exact RP ID (and the site's allowed credential IDs) are offered → decrypt (Face ID) → assertion with flags UP|UV|BE|BS and counter 0 (synced passkeys can't keep a counter). QuickType passkey identities go through the same path.
+- **Sign-in** (AutoFill): the system calls `provideCredentialWithoutUserInteraction` first; Face ID can't be shown there, so Passage answers "user interaction required" and iOS opens its UI. The preselected entry is decrypted once the sheet is up (Face ID is refused with `notInteractive` while it animates in, so it retries, then offers "Continue with Face ID"). In the list, passkeys for the exact RP ID (and the site's allowed credential IDs) are offered → decrypt (Face ID) → assertion with flags UP|UV|BE|BS and counter 0 (synced passkeys can't keep a counter). QuickType passkey identities go through the same path.
 - **Registration** (AutoFill): user verification (`deviceOwnerAuthentication`) → new key → saved, committed and **pushed from the extension**. Encrypting needs only the recipients' public keys, so no Face ID for the key. If the push fails, the commit stays in the shared clone and the app pushes it on its next sync; the sheet says so. Existing passkeys in `excludedCredentials` → `matchedExcludedCredential`.
 - **Concurrency:** app and extensions serialize git work with a `flock` on `.git/passage.lock` (`ProcessLock`), held across write → commit → sync.
 - **Verification:** registration and assertion are checked by py_webauthn in `swift test`. In the Simulator, a passkey saved through the extension's save path was committed, pushed, encrypted to all three recipients, and decrypted on the Mac with plain `age` to the KeePassXC format.
