@@ -254,7 +254,7 @@ Things `swift test` on the Mac can't cover:
 - [ ] One-time code field: Passage offers the code; text insertion (long-press › AutoFill › Passwords) inserts a chosen field.
 - [ ] AutoFill with a Files-folder store (does the security-scoped bookmark resolve inside the extension?).
 - [ ] Shortcuts: "Copy a password from Passage" asks for an entry, opens Passage, one Face ID, copies; "Sync Passage" runs without opening the app.
-- [ ] Control Center: add the Sync and Search Passwords controls; Sync works with the app closed (background, SSH deploy key), Search opens the app with search focused.
+- [x] Control Center: add the Sync and Search Passwords controls (Sync verified on build 6; Search fixed in build 7); Sync works with the app closed (background, SSH deploy key), Search opens the app with search focused.
 - [ ] YubiKey (5 series, NFC): Add YubiKey finds the age-plugin-yubikey slot; an entry encrypted on the Mac with `-r age1yubikey1…` decrypts after PIN + tap; wrong PIN shows retries; the PIN isn't asked again until the app locks.
 - [ ] YubiKey over USB-C (plugged in): same without NFC.
 - [x] Passkeys: create one on webauthn.io (Face ID, "Save Passkey in Passage"), then the commit shows up on GitHub; sign in with it; sign in from QuickType; the entry decrypts on the Mac and imports into KeePassXC.
