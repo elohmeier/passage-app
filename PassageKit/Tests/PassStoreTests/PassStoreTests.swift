@@ -417,9 +417,10 @@ import Testing
     @Test func assertionVerifiesWithCryptoKit() throws {
         let passkey = Passkey.create(relyingParty: "example.com", userName: "bob", userHandle: Data([1, 2, 3]))
         let clientDataHash = Data(SHA256.hash(data: Data("client data".utf8)))
-        let (authData, signature) = try passkey.assertion(clientDataHash: clientDataHash)
+        let (authData, signature) = try passkey.assertion(clientDataHash: clientDataHash, userVerified: true)
         #expect(authData.count == 37)
         #expect(authData[32] == 0x1D, "UP | UV | BE | BS")
+        #expect(try passkey.assertion(clientDataHash: clientDataHash, userVerified: false).authenticatorData[32] == 0x19, "UP | BE | BS")
         let sig = try P256.Signing.ECDSASignature(derRepresentation: signature)
         #expect(passkey.privateKey.publicKey.isValidSignature(sig, for: authData + clientDataHash))
     }
@@ -437,7 +438,7 @@ import Testing
         let authChallenge = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
         let regClient = clientData("webauthn.create", regChallenge)
         let authClient = clientData("webauthn.get", authChallenge)
-        let (authData, signature) = try passkey.assertion(clientDataHash: Data(SHA256.hash(data: authClient)))
+        let (authData, signature) = try passkey.assertion(clientDataHash: Data(SHA256.hash(data: authClient)), userVerified: true)
         let id = Base64URL.encode(passkey.credentialID)
         let input: [String: Any] = [
             "rpId": rpId, "origin": origin,
@@ -618,5 +619,37 @@ extension NewStoreTests {
         #expect(changes[0].added.map(\.label) == ["Someone", nil])
         #expect(changes[0].removed == ["age1old"])
         #expect(now.changes(since: now).isEmpty)
+    }
+}
+
+@Suite struct ContainmentTests {
+    @Test func entryPathsStayInsideTheStore() async throws {
+        let base = FileManager.default.temporaryDirectory.appending(path: "contain-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let root = base.appending(path: "store"), outside = base.appending(path: "outside")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: root.appending(path: "link"), withDestinationURL: outside)
+        let id = X25519Identity()
+        try Data(id.recipient.encoded.utf8).write(to: root.appending(path: ".age-recipients"))
+        let store = LocalStore(root: root)
+        for bad in ["../escape", "a/../../escape", "/abs", ".hidden", "a//b", "link/x"] {
+            await #expect(throws: StoreError.invalidPath(bad)) { try await store.save(EntryPath(bad), plaintext: Data("x".utf8)) }
+        }
+        try await store.save(EntryPath("new/folder/ok"), plaintext: Data("x".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
+    }
+
+    @Test func importedNamesCantEscapeOrInject() {
+        var item = ImportedItem(title: "Bank")
+        item.urls = ["https://bank.example"]
+        item.userName = "bob\nurl: https://evil.example"
+        item.password = "line1\nurl: https://evil.example"
+        let passkey = Passkey.create(relyingParty: "../..", userName: "../x", userHandle: Data([1]))
+        item.passkeys = [passkey]
+        let entries = CredentialImport.entries(for: [item], existing: [])
+        #expect(entries.allSatisfy { !$0.path.path.split(separator: "/").contains("..") })
+        let entry = Entry(entries[0].text)
+        #expect(entry.password?.isEmpty ?? true)
+        #expect(entry.url == "https://bank.example")
     }
 }

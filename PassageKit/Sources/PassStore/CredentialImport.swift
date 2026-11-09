@@ -38,9 +38,14 @@ public enum CredentialImport {
             if item.password != nil || item.otp != nil || !item.notes.isEmpty {
                 let site = item.urls.lazy.compactMap(AutoFillIndex.host(of:)).first ?? sanitize(item.title)
                 let user = item.userName.map(sanitize).flatMap { $0.isEmpty ? nil : $0 } ?? "login"
-                var draft = EntryDraft(password: item.password ?? "")
-                if let userName = item.userName { draft.username = userName }
-                if let url = item.urls.first { draft.url = url }
+                // The first line of an entry is the password; a multi-line one goes into a field
+                // instead, so its other lines can't pose as fields.
+                let password = item.password ?? ""
+                let multiline = password.contains(where: \.isNewline)
+                var draft = EntryDraft(password: multiline ? "" : password)
+                if multiline { draft.otherFields.append(.init(key: "password", value: password)) }
+                if let userName = item.userName { draft.username = userName.filter { !$0.isNewline } }
+                if let url = item.urls.first { draft.url = url.filter { !$0.isNewline } }
                 draft.otpURI = item.otp?.uri
                 if !item.title.isEmpty, item.title.lowercased() != site { draft.otherFields.append(.init(key: "title", value: item.title)) }
                 for note in item.notes where !note.isEmpty { draft.otherFields.append(.init(key: "notes", value: note)) }
@@ -53,10 +58,15 @@ public enum CredentialImport {
         return out
     }
 
-    /// A single path component: no slashes, no leading dots, no control characters.
+    /// A single path component: no slashes, no leading dots, no control characters. Can be
+    /// empty.
     static func sanitize(_ s: String) -> String {
         let cleaned = s.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.map(String.init).joined()
             .replacingOccurrences(of: "/", with: "_").trimmingCharacters(in: .whitespaces)
         return String(cleaned.drop { $0 == "." }).lowercased()
     }
+}
+
+extension String {
+    var nonEmpty: String? { isEmpty ? nil : self }
 }

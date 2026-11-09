@@ -61,6 +61,7 @@ extension GitRepo {
         let ctx = CallbackContext(credentials: credentials, knownHosts: knownHosts, progress: nil)
         var options = git_push_options()
         try check(git_push_options_init(&options, UInt32(GIT_PUSH_OPTIONS_VERSION)))
+        options.follow_redirects = GIT_REMOTE_REDIRECT_NONE
         ctx.install(into: &options.callbacks)
 
         let refspec = "refs/heads/\(branch):refs/heads/\(branch)"
@@ -397,7 +398,17 @@ extension GitRepo {
         try check(git_blob_lookup(&blob, repo, &oid))
         defer { git_blob_free(blob) }
         let data = Data(bytes: git_blob_rawcontent(blob), count: Int(git_blob_rawsize(blob)))
+        // Paths come from the remote's trees: stay inside the working tree and out of .git.
+        let components = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard !path.hasPrefix("/"), components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+            components.first?.lowercased() != ".git"
+        else { throw GitError(kind: .other, message: "refusing to write \(path)") }
         let url = self.url.appending(path: path)
+        let parent = url.deletingLastPathComponent().resolvingSymlinksInPath().path
+        let root = self.url.resolvingSymlinksInPath().path
+        guard parent == root || parent.hasPrefix(root + "/") || !FileManager.default.fileExists(atPath: parent) else {
+            throw GitError(kind: .other, message: "refusing to write \(path) through a symlink")
+        }
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try data.write(to: url, options: .atomic)

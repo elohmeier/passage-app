@@ -106,9 +106,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         Task { @MainActor in
             store.restore()
             let entry = EntryPath(path)
-            let content: Entry
+            let content: Entry, userVerified: Bool
             do {
-                let plaintext = try await model.decrypt(store.read(entry))
+                let plaintext: Data
+                (plaintext, userVerified) = try await model.decryptVerifying(store.read(entry))
                 content = Entry(String(decoding: plaintext, as: UTF8.self))
             } catch KeyStoreError.cancelled {
                 extensionContext.cancelRequest(withError: ASExtensionError(.userCanceled))
@@ -121,7 +122,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
             if let request = credentialRequest as? ASPasskeyCredentialRequest {
                 guard let passkey = Passkey(entry: content),
-                    let (authenticatorData, signature) = try? passkey.assertion(clientDataHash: request.clientDataHash)
+                    let (authenticatorData, signature) = try? passkey.assertion(clientDataHash: request.clientDataHash, userVerified: userVerified)
                 else {
                     extensionContext.cancelRequest(withError: ASExtensionError(.credentialIdentityNotFound))
                     return

@@ -169,9 +169,9 @@ struct CredentialPickerView: View {
         error = nil
         defer { working = nil }
         do {
-            let plaintext: Data
+            let plaintext: Data, userVerified: Bool
             do {
-                plaintext = try await model.decrypt(store.read(entry))
+                (plaintext, userVerified) = try await model.decryptVerifying(store.read(entry))
             } catch KeyStoreError.notInteractive where automatic {
                 log.info("decrypt not interactive yet, will retry")
                 return false
@@ -199,7 +199,7 @@ struct CredentialPickerView: View {
                     error = String(localized: "This entry has no passkey for \(request.relyingParty).")
                     return true
                 }
-                let (authenticatorData, signature) = try passkey.assertion(clientDataHash: request.clientDataHash)
+                let (authenticatorData, signature) = try passkey.assertion(clientDataHash: request.clientDataHash, userVerified: userVerified)
                 complete(.passkey(passkey, authenticatorData: authenticatorData, signature: signature, clientDataHash: request.clientDataHash))
             }
         } catch {

@@ -19,8 +19,19 @@ final class YubiKeyService {
     }
 
     var pinRequest: PINRequest?
-    /// Kept for the unlock session only; cleared when the app locks.
-    private var cachedPIN: String?
+    /// Kept like a Face ID unlock, per `unlockPolicy`; also cleared when the app locks.
+    private var cachedPIN: (pin: String, at: Date)?
+    /// The app's unlock policy (Settings ▸ Require Face ID).
+    var unlockPolicy: () -> UnlockPolicy = { .everyTime }
+
+    private var reusablePIN: String? {
+        guard let cachedPIN else { return nil }
+        switch unlockPolicy() {
+        case .everyTime: return nil
+        case .reuse(let seconds): return Date.now.timeIntervalSince(cachedPIN.at) < Double(seconds) ? cachedPIN.pin : nil
+        case .untilBackground: return cachedPIN.pin
+        }
+    }
 
     struct SlotKey: Identifiable, Hashable {
         let slot: UInt8
@@ -99,7 +110,7 @@ final class YubiKeyService {
                 if let current = pin {
                     switch try await session.verifyPin(current) {
                     case .success:
-                        cachedPIN = current
+                        cachedPIN = unlockPolicy() == .everyTime ? nil : (current, .now)
                     case .fail(let retries):
                         cachedPIN = nil
                         await close(connection, error: nil)
@@ -120,7 +131,7 @@ final class YubiKeyService {
     }
 
     private func requestPIN(_ message: String, useCache: Bool = true) async throws -> String {
-        if useCache, let cachedPIN { return cachedPIN }
+        if useCache, let reusablePIN { return reusablePIN }
         let pin = await withCheckedContinuation { continuation in
             pinRequest = PINRequest(message: message, continuation: continuation)
         }

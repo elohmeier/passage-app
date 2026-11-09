@@ -7,6 +7,7 @@ public enum StoreError: Error, LocalizedError, Equatable {
     case accessDenied
     case invalidRecipients(file: String, message: String)
     case alreadySetUp
+    case invalidPath(String)
 
     public var errorDescription: String? {
         switch self {
@@ -15,6 +16,7 @@ public enum StoreError: Error, LocalizedError, Equatable {
         case .accessDenied: "Passage no longer has access to the store folder. Choose it again."
         case .invalidRecipients(let file, let message): "\(file) is invalid: \(message)"
         case .alreadySetUp: "This store already has recipients or entries."
+        case .invalidPath(let p): "“\(p)” isn't a valid entry name."
         }
     }
 }
@@ -168,15 +170,35 @@ extension LocalStore {
     /// Returns the recipients used.
     @discardableResult
     public func save(_ entry: EntryPath, plaintext: Data) async throws -> [any AgeRecipient] {
+        let url = try writableURL(for: entry)
         let recipients = try await recipients(for: entry)
         guard !recipients.isEmpty else { throw StoreError.noRecipients(entry) }
         let ciphertext = try Age.encrypt(plaintext, to: recipients)
-        let url = url(for: entry)
         try await coordinated(writing: url) { url in
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             try ciphertext.write(to: url, options: .atomic)
         }
         return recipients
+    }
+
+    /// The file for an entry that's about to be written or removed, checked to stay inside the
+    /// store: no empty, `.` or `..` components, nothing hidden, and no symlinked folder that
+    /// leads elsewhere.
+    func writableURL(for entry: EntryPath) throws -> URL {
+        let components = entry.path.split(separator: "/", omittingEmptySubsequences: false)
+        guard !components.isEmpty, components.allSatisfy({ !$0.isEmpty && !$0.hasPrefix(".") && !$0.contains("\0") }) else {
+            throw StoreError.invalidPath(entry.path)
+        }
+        let url = url(for: entry)
+        // Resolve symlinks in the part of the folder that exists.
+        var existing = url.deletingLastPathComponent()
+        while !FileManager.default.fileExists(atPath: existing.path), existing.pathComponents.count > root.pathComponents.count {
+            existing.deleteLastPathComponent()
+        }
+        let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        let resolved = existing.standardizedFileURL.resolvingSymlinksInPath().path
+        guard resolved == rootPath || resolved.hasPrefix(rootPath + "/") else { throw StoreError.invalidPath(entry.path) }
+        return url
     }
 
     public func exists(_ entry: EntryPath) -> Bool {
@@ -185,7 +207,7 @@ extension LocalStore {
 
     /// Deletes an entry and any folders it leaves empty.
     public func delete(_ entry: EntryPath) async throws {
-        let url = url(for: entry)
+        let url = try writableURL(for: entry)
         try await coordinated(writing: url, options: .forDeleting) { try FileManager.default.removeItem(at: $0) }
         removeEmptyFolders(from: entry.folder)
     }
@@ -194,11 +216,11 @@ extension LocalStore {
     /// `decrypt` and re-encrypted for them, as `passage mv` does.
     public func move(_ from: EntryPath, to: EntryPath, decrypt: @Sendable (Data) async throws -> Data) async throws {
         guard from != to else { return }
+        let source = try writableURL(for: from), target = try writableURL(for: to)
         guard !exists(to) else { throw CocoaError(.fileWriteFileExists) }
         let old = try await recipients(for: from).map(\.encoded).sorted()
         let new = try await recipients(for: to).map(\.encoded).sorted()
         if old == new {
-            let source = url(for: from), target = url(for: to)
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try await coordinated(moving: source, to: target)
         } else {

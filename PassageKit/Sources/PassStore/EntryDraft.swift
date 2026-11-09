@@ -67,7 +67,8 @@ public struct EntryDraft: Equatable, Sendable {
 
     /// pass format: password, then `key: value` lines, then the OTP URI.
     public var text: String {
-        var lines = [password]
+        // Only the first line can be the password; more lines would be read as fields.
+        var lines = [String(password.prefix { !$0.isNewline })]
         for field in fields where !field.value.isEmpty || field.key != nil {
             let value = field.value.replacingOccurrences(of: "\r\n", with: "\n")
             guard let key = field.key, !key.isEmpty else {

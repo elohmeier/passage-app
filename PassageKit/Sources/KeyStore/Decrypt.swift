@@ -29,6 +29,17 @@ extension IdentityStore {
     public func decrypt(
         _ ciphertext: Data, sessions: UnlockSessionManager, reason: String, hardware: HardwareKeyAgreement? = nil
     ) async throws -> Data {
+        try await decryptVerifying(ciphertext, sessions: sessions, reason: reason, hardware: hardware).plaintext
+    }
+
+    /// Like `decrypt`, also telling whether the user was verified to do it: Face ID, Touch ID
+    /// or the passcode (possibly reused within the unlock policy's window), or a YubiKey PIN.
+    /// False for keys without protection and YubiKeys that only need a touch. Passkeys report
+    /// this as WebAuthn's UV flag.
+    @concurrent
+    public func decryptVerifying(
+        _ ciphertext: Data, sessions: UnlockSessionManager, reason: String, hardware: HardwareKeyAgreement? = nil
+    ) async throws -> (plaintext: Data, userVerified: Bool) {
         let header = try Age.header(of: ciphertext)
         let present = Set(header.stanzas.map(\.type))
         let all = try list()
@@ -47,7 +58,7 @@ extension IdentityStore {
                 guard let share = header.stanzas.lazy.compactMap(recipient.share(in:)).first else { continue }
                 let secret = try await hardware(identity, share)
                 let tagKey = PrecomputedTagKey(publicKey: key, secrets: [share.x963Representation: secret])
-                return try Age.decrypt(ciphertext, identities: [TagIdentity(key: tagKey)])
+                return (try Age.decrypt(ciphertext, identities: [TagIdentity(key: tagKey)]), ref.needsPIN)
             }
         }
 
@@ -56,7 +67,7 @@ extension IdentityStore {
 
         let context = try await sessions.context(for: candidates.map(\.protection), reason: reason)
         let identities = try unlock(candidates, context: context)
-        return try Age.decrypt(ciphertext, identities: identities)
+        return (try Age.decrypt(ciphertext, identities: identities), context != nil)
     }
 }
 

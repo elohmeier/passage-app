@@ -18,6 +18,7 @@ struct PassageApp: App {
         PassageEnvironment.model.hardwareKeyAgreement = { identity, share in
             try await YubiKeyService.shared.keyAgreement(for: identity, share: share)
         }
+        YubiKeyService.shared.unlockPolicy = { PassageEnvironment.model.sessions.policy }
         StoreModel.beginBackgroundTask = {
             let id = UIApplication.shared.beginBackgroundTask(withName: "Sync")
             return { UIApplication.shared.endBackgroundTask(id) }
@@ -27,6 +28,7 @@ struct PassageApp: App {
     @State private var model = PassageEnvironment.model
     @State private var store = PassageEnvironment.store
     @Environment(\.scenePhase) private var scenePhase
+    @State private var screenCaptured = false
 
     var body: some Scene {
         WindowGroup {
@@ -107,8 +109,11 @@ struct PassageApp: App {
                 .overlay {
                     if scenePhase != .active {
                         PrivacyCover()
+                    } else if screenCaptured {
+                        PrivacyCover(message: "Hidden while the screen is recorded or mirrored")
                     }
                 }
+                .background(SceneCaptureObserver(isCaptured: $screenCaptured))
                 .alert(
                     "Error", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })
                 ) {
@@ -167,14 +172,43 @@ struct PassageApp: App {
 }
 
 struct PrivacyCover: View {
+    var message: LocalizedStringKey?
+
     var body: some View {
         ZStack {
             Rectangle().fill(.regularMaterial)
-            Image(systemName: "lock.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+            VStack(spacing: 16) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 48))
+                if let message { Text(message).multilineTextAlignment(.center) }
+            }
+            .foregroundStyle(.secondary)
+            .padding()
         }
         .ignoresSafeArea()
+    }
+}
+
+/// Reports whether the scene is being recorded, mirrored or AirPlayed, so secrets aren't
+/// broadcast. (Screenshots can't be prevented.)
+private struct SceneCaptureObserver: UIViewRepresentable {
+    @Binding var isCaptured: Bool
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        view.registerForTraitChanges([UITraitSceneCaptureState.self]) { (view: UIView, _: UITraitCollection) in
+            update(view)
+        }
+        DispatchQueue.main.async { update(view) }
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) {}
+
+    private func update(_ view: UIView) {
+        let captured = view.traitCollection.sceneCaptureState == .active
+        if captured != isCaptured { isCaptured = captured }
     }
 }
 

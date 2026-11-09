@@ -126,7 +126,12 @@ final class AppModel {
     var hardwareKeyAgreement: HardwareKeyAgreement?
 
     func decrypt(_ data: Data) async throws -> Data {
-        try await identityStore.decrypt(
+        try await decryptVerifying(data).plaintext
+    }
+
+    /// Also tells whether the user was verified (for a passkey's UV flag).
+    func decryptVerifying(_ data: Data) async throws -> (plaintext: Data, userVerified: Bool) {
+        try await identityStore.decryptVerifying(
             data, sessions: sessions, reason: String(localized: "Unlock your keys to decrypt"), hardware: hardwareKeyAgreement)
     }
 

@@ -96,8 +96,7 @@ public struct Passkey: Sendable, Equatable {
     /// Suggested store path, e.g. `passkeys/github.com/alice`.
     public var suggestedPath: EntryPath {
         let user = userName.isEmpty ? Base64URL.encode(credentialID.prefix(6)) : userName
-        let safe = user.replacingOccurrences(of: "/", with: "_")
-        return EntryPath("passkeys/\(relyingParty)/\(safe)")
+        return EntryPath("passkeys/\(CredentialImport.sanitize(relyingParty).nonEmpty ?? "unknown")/\(CredentialImport.sanitize(user).nonEmpty ?? "passkey")")
     }
 
     // MARK: WebAuthn
@@ -110,19 +109,21 @@ public struct Passkey: Sendable, Equatable {
         static let attestedCredentialData: UInt8 = 0x40
     }
 
-    private var flags: UInt8 {
-        Flag.userPresent | Flag.userVerified | (backupEligible ? Flag.backupEligible : 0) | (backedUp ? Flag.backedUp : 0)
+    private func flags(userVerified: Bool) -> UInt8 {
+        Flag.userPresent | (userVerified ? Flag.userVerified : 0) | (backupEligible ? Flag.backupEligible : 0)
+            | (backedUp ? Flag.backedUp : 0)
     }
 
     /// authenticatorData for an assertion: rpIdHash ‖ flags ‖ signCount (always 0: synced
     /// passkeys can't keep a monotonic counter).
-    public func assertionAuthenticatorData() -> Data {
-        Data(SHA256.hash(data: Data(relyingParty.utf8))) + [flags] + Data(count: 4)
+    public func assertionAuthenticatorData(userVerified: Bool) -> Data {
+        Data(SHA256.hash(data: Data(relyingParty.utf8))) + [flags(userVerified: userVerified)] + Data(count: 4)
     }
 
     /// Signs `authenticatorData ‖ clientDataHash` (ES256, DER signature as WebAuthn expects).
-    public func assertion(clientDataHash: Data) throws -> (authenticatorData: Data, signature: Data) {
-        let authenticatorData = assertionAuthenticatorData()
+    /// `userVerified` must say whether the user was verified for this sign-in (UV flag).
+    public func assertion(clientDataHash: Data, userVerified: Bool) throws -> (authenticatorData: Data, signature: Data) {
+        let authenticatorData = assertionAuthenticatorData(userVerified: userVerified)
         let signature = try privateKey.signature(for: authenticatorData + clientDataHash).derRepresentation
         return (authenticatorData, signature)
     }
@@ -130,7 +131,8 @@ public struct Passkey: Sendable, Equatable {
     /// The attestation object for registration ("none" attestation).
     public func attestationObject() -> Data {
         var authData = Data(SHA256.hash(data: Data(relyingParty.utf8)))
-        authData.append(flags | Flag.attestedCredentialData)
+        // Registration always verifies the user first (PasskeyRegistrationView).
+        authData.append(flags(userVerified: true) | Flag.attestedCredentialData)
         authData += Data(count: 4)
         authData += withUnsafeBytes(of: Self.aaguid.uuid) { Data($0) }
         authData += [UInt8(credentialID.count >> 8), UInt8(credentialID.count & 0xFF)]

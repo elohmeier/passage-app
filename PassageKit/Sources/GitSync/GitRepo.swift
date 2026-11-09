@@ -42,6 +42,8 @@ public actor GitRepo {
         try check(git_clone_options_init(&options, UInt32(GIT_CLONE_OPTIONS_VERSION)))
         ctx.install(into: &options.fetch_opts.callbacks)
         options.checkout_opts.checkout_strategy = GIT_CHECKOUT_SAFE.rawValue
+        // Credentials are for the remote's host; never follow a redirect to another one.
+        options.fetch_opts.follow_redirects = GIT_REMOTE_REDIRECT_NONE
 
         var repo: OpaquePointer?
         let code: Int32 = withExtendedLifetime(ctx) {
@@ -102,6 +104,7 @@ public actor GitRepo {
         try check(git_fetch_options_init(&options, UInt32(GIT_FETCH_OPTIONS_VERSION)))
         ctx.install(into: &options.callbacks)
         options.prune = GIT_FETCH_PRUNE
+        options.follow_redirects = GIT_REMOTE_REDIRECT_NONE
         let code = withExtendedLifetime(ctx) { git_remote_fetch(remote, nil, &options, nil) }
         if code < 0 { throw ctx.error(code) }
     }
