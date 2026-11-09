@@ -73,9 +73,54 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         show(.text, services: [])
     }
 
-    /// Every credential needs Face ID, so QuickType selections always come back with UI.
+    /// A credential picked in QuickType or the system passkey sheet. Serve it directly: the
+    /// system Face ID prompt is allowed here (it isn't extension UI). Passkey sign-ins in
+    /// particular aren't retried with UI if this answers "user interaction required"; the
+    /// website just gets an error. So that answer is only for entries that need our UI, e.g.
+    /// a YubiKey tap.
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
-        extensionContext.cancelRequest(withError: ASExtensionError(.userInteractionRequired))
+        guard let path = credentialRequest.credentialIdentity.recordIdentifier else {
+            extensionContext.cancelRequest(withError: ASExtensionError(.credentialIdentityNotFound))
+            return
+        }
+        Task { @MainActor in
+            store.restore()
+            let entry = EntryPath(path)
+            let content: Entry
+            do {
+                let plaintext = try await model.decrypt(store.read(entry))
+                content = Entry(String(decoding: plaintext, as: UTF8.self))
+            } catch KeyStoreError.cancelled {
+                extensionContext.cancelRequest(withError: ASExtensionError(.userCanceled))
+                return
+            } catch {
+                extensionContext.cancelRequest(withError: ASExtensionError(.userInteractionRequired))
+                return
+            }
+            await AutoFillStore.learn(entry, from: content)
+
+            if let request = credentialRequest as? ASPasskeyCredentialRequest {
+                guard let passkey = Passkey(entry: content),
+                    let (authenticatorData, signature) = try? passkey.assertion(clientDataHash: request.clientDataHash)
+                else {
+                    extensionContext.cancelRequest(withError: ASExtensionError(.credentialIdentityNotFound))
+                    return
+                }
+                complete(.passkey(passkey, authenticatorData: authenticatorData, signature: signature, clientDataHash: request.clientDataHash))
+            } else if credentialRequest.type == .oneTimeCode {
+                guard let otp = content.otp else {
+                    extensionContext.cancelRequest(withError: ASExtensionError(.credentialIdentityNotFound))
+                    return
+                }
+                complete(.oneTimeCode(otp.code()))
+            } else {
+                guard let password = content.password, !password.isEmpty else {
+                    extensionContext.cancelRequest(withError: ASExtensionError(.credentialIdentityNotFound))
+                    return
+                }
+                complete(.password(user: content.username ?? entry.name, password: password))
+            }
+        }
     }
 
     /// A QuickType suggestion was picked: decrypt that entry directly.
