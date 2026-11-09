@@ -1,3 +1,4 @@
+import CryptoKit
 import AgeCrypto
 import Foundation
 import Testing
@@ -372,5 +373,81 @@ import Testing
         #expect(AutoFillMatcher.match(items, service: "https://www.github.com").first?.path == "github.com/alice")
         #expect(AutoFillMatcher.match(items, service: "example.com").map(\.path) == ["accounts.example.com/bob"])
         #expect(AutoFillMatcher.match(items, service: "hub.com").isEmpty)
+    }
+}
+
+@Suite struct PasskeyTests {
+    @Test func entryRoundTrip() throws {
+        let passkey = Passkey.create(relyingParty: "github.com", userName: "alice", userHandle: Data("user-123".utf8))
+        let text = passkey.entryText
+        #expect(text.hasPrefix("\nusername: alice\nurl: https://github.com\nKPEX_PASSKEY_RELYING_PARTY: github.com\n"))
+        #expect(text.contains("KPEX_PASSKEY_PRIVATE_KEY_PEM: |\n  -----BEGIN PRIVATE KEY-----\n"))
+        #expect(Passkey(entry: Entry(text)) == passkey)
+        #expect(passkey.suggestedPath.path == "passkeys/github.com/alice")
+        #expect(Passkey(entry: Entry("pw\nusername: x")) == nil)
+    }
+
+    @Test func cbor() {
+        #expect(CBOR.int(-7) == Data([0x26]))
+        #expect(CBOR.int(500) == Data([0x19, 0x01, 0xF4]))
+        #expect(CBOR.text("fmt") == Data([0x63, 0x66, 0x6D, 0x74]))
+        #expect(CBOR.map([]) == Data([0xA0]))
+    }
+
+    @Test func assertionVerifiesWithCryptoKit() throws {
+        let passkey = Passkey.create(relyingParty: "example.com", userName: "bob", userHandle: Data([1, 2, 3]))
+        let clientDataHash = Data(SHA256.hash(data: Data("client data".utf8)))
+        let (authData, signature) = try passkey.assertion(clientDataHash: clientDataHash)
+        #expect(authData.count == 37)
+        #expect(authData[32] == 0x1D, "UP | UV | BE | BS")
+        let sig = try P256.Signing.ECDSASignature(derRepresentation: signature)
+        #expect(passkey.privateKey.publicKey.isValidSignature(sig, for: authData + clientDataHash))
+    }
+
+    /// Full registration + authentication checked by py_webauthn, an independent server-side
+    /// implementation. Needs `uv` (and network the first time); skipped otherwise.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/opt/homebrew/bin/uv")))
+    func verifiedByPyWebAuthn() throws {
+        let rpId = "example.com", origin = "https://example.com"
+        let passkey = Passkey.create(relyingParty: rpId, userName: "alice", userHandle: Data("handle".utf8))
+        func clientData(_ type: String, _ challenge: Data) -> Data {
+            Data(#"{"type":"\#(type)","challenge":"\#(Base64URL.encode(challenge))","origin":"\#(origin)","crossOrigin":false}"#.utf8)
+        }
+        let regChallenge = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+        let authChallenge = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+        let regClient = clientData("webauthn.create", regChallenge)
+        let authClient = clientData("webauthn.get", authChallenge)
+        let (authData, signature) = try passkey.assertion(clientDataHash: Data(SHA256.hash(data: authClient)))
+        let id = Base64URL.encode(passkey.credentialID)
+        let input: [String: Any] = [
+            "rpId": rpId, "origin": origin,
+            "registrationChallenge": Base64URL.encode(regChallenge), "authenticationChallenge": Base64URL.encode(authChallenge),
+            "registration": ["id": id, "rawId": id, "type": "public-key", "response": [
+                "clientDataJSON": Base64URL.encode(regClient), "attestationObject": Base64URL.encode(passkey.attestationObject()),
+            ]],
+            "authentication": ["id": id, "rawId": id, "type": "public-key", "response": [
+                "clientDataJSON": Base64URL.encode(authClient), "authenticatorData": Base64URL.encode(authData),
+                "signature": Base64URL.encode(signature), "userHandle": Base64URL.encode(passkey.userHandle),
+            ]],
+        ]
+        let file = FileManager.default.temporaryDirectory.appending(path: "webauthn-\(UUID().uuidString).json")
+        try JSONSerialization.data(withJSONObject: input).write(to: file)
+
+        let p = Process()
+        p.executableURL = URL(filePath: "/opt/homebrew/bin/uv")
+        let script = Bundle.module.url(forResource: "verify_webauthn", withExtension: "py")!
+        p.arguments = ["run", "--quiet", "--with", "webauthn==2.*", "python", "-I", script.path, file.path]
+        let out = Pipe(), err = Pipe()
+        p.standardOutput = out
+        p.standardError = err
+        try p.run()
+        p.waitUntilExit()
+        let output = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let errors = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        #expect(p.terminationStatus == 0, "\(errors)")
+        #expect(output.contains(#""ok": true"#))
+        #expect(output.contains(#""userVerified": true"#))
+        #expect(output.contains(#""backedUp": true"#))
+        #expect(output.lowercased().contains(Passkey.aaguid.uuidString.lowercased()))
     }
 }

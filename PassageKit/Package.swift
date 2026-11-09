@@ -84,7 +84,7 @@ let package = Package(
         .testTarget(name: "KeyStoreTests", dependencies: ["KeyStore"]),
         .target(name: "GitHubKit"),
         .testTarget(name: "GitHubKitTests", dependencies: ["GitHubKit"]),
-        .testTarget(name: "PassStoreTests", dependencies: ["PassStore"]),
+        .testTarget(name: "PassStoreTests", dependencies: ["PassStore"], resources: [.copy("Resources/verify_webauthn.py")]),
         .testTarget(
             name: "GitSyncTests",
             dependencies: [
