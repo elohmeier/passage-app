@@ -55,9 +55,12 @@ public struct SecureEnclaveTagKey: TagPrivateKey {
         }
     }
 
+    /// The `AgeError.identityUnavailable` message when the user dismissed Face ID.
+    public static let cancelledMessage = "Authentication was cancelled."
+
     static func describe(_ error: any Error) -> String {
         if let la = error as? LAError, la.code == .userCancel || la.code == .appCancel || la.code == .systemCancel {
-            return "Authentication was cancelled."
+            return cancelledMessage
         }
         return "The Secure Enclave key couldn't be used: \(error.localizedDescription)"
     }

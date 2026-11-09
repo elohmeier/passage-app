@@ -1,6 +1,7 @@
 import AgeCrypto
 import CryptoKit
 import Foundation
+import LocalAuthentication
 
 extension StoredIdentity {
     /// Stanza types this identity can unwrap. Used to skip authentication for files that
@@ -36,9 +37,15 @@ extension IdentityStore {
     /// or the passcode (possibly reused within the unlock policy's window), or a YubiKey PIN.
     /// False for keys without protection and YubiKeys that only need a touch. Passkeys report
     /// this as WebAuthn's UV flag.
+    ///
+    /// `promptInKeyOperation` is for callers without UI on screen (AutoFill's silent fill):
+    /// unless a session is still unlocked, the keys get a fresh, unevaluated context, so the
+    /// Secure Enclave operation itself asks for Face ID instead of an explicit evaluation
+    /// that would need the caller's UI.
     @concurrent
     public func decryptVerifying(
-        _ ciphertext: Data, sessions: UnlockSessionManager, reason: String, hardware: HardwareKeyAgreement? = nil
+        _ ciphertext: Data, sessions: UnlockSessionManager, reason: String, hardware: HardwareKeyAgreement? = nil,
+        promptInKeyOperation: Bool = false
     ) async throws -> (plaintext: Data, userVerified: Bool) {
         let header = try Age.header(of: ciphertext)
         let present = Set(header.stanzas.map(\.type))
@@ -65,7 +72,16 @@ extension IdentityStore {
         let candidates = all.filter { $0.kind != .yubikey && !$0.stanzaTypes.isDisjoint(with: present) }
         guard !candidates.isEmpty else { throw AgeError.noIdentityMatch(stanzaTypes: header.stanzas.map(\.type)) }
 
-        let context = try await sessions.context(for: candidates.map(\.protection), reason: reason)
+        let protections = candidates.map(\.protection)
+        let context: LAContext?
+        if promptInKeyOperation, !sessions.isUnlocked, protections.contains(where: { $0.policy != nil }) {
+            let fresh = LAContext()
+            fresh.localizedReason = reason
+            fresh.touchIDAuthenticationAllowableReuseDuration = 0
+            context = fresh
+        } else {
+            context = try await sessions.context(for: protections, reason: reason)
+        }
         let identities = try unlock(candidates, context: context)
         return (try Age.decrypt(ciphertext, identities: identities), context != nil)
     }
