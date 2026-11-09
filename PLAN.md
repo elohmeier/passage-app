@@ -223,11 +223,13 @@ M2/M3 status: the code is done and tested on the Mac (`swift test`, including it
 
 v1 = M0 through M9. All three of git, Files folder and YubiKey ship in v1.
 
-### On-device checklist (next TestFlight build)
+### On-device checklist
+
+Verified on build 3 (2026-11-09): device key, desktop re-encrypt → pull → decrypt, AutoFill in Safari, no alert after unlock, Connect GitHub (including reconnect after Safari), Keys detail page.
 
 Things `swift test` on the Mac can't cover:
 
-- [ ] Create a device key on the iPhone. The QR code is scannable and Copy/Share work.
+- [x] Create a device key on the iPhone. The QR code is scannable and Copy/Share work.
 - [ ] `age -r <age1tag…> | age -r <age1tagpq…>` on the Mac, open the file via "Decrypt a File": exactly one Face ID prompt, plaintext shown.
 - [ ] Unlock policy: "After 1 Minute" doesn't prompt again within the window, "Every Time" does. Backgrounding the app locks.
 - [ ] A file not encrypted to any of our keys fails without a Face ID prompt.
@@ -238,13 +240,13 @@ Things `swift test` on the Mac can't cover:
 - [ ] App switcher shows the privacy cover.
 - [ ] Open a passage store folder in iCloud Drive, and one from another File Provider (e.g. Working Copy). The folder reopens after an app restart.
 - [ ] Entries evicted from iCloud ("Remove Download") download on open.
-- [ ] A change made on the Mac shows up without a manual refresh (NSFilePresenter); pull-to-refresh works.
+- [x] A change made on the Mac shows up without a manual refresh (NSFilePresenter); pull-to-refresh works.
 - [ ] Copy password → paste in another app works; it's gone after the timeout and doesn't appear on the Mac via Universal Clipboard.
 - [ ] TOTP code matches `oathtool`/another authenticator; the countdown ring advances.
-- [ ] Face ID prompt while opening an entry doesn't cause a re-prompt loop.
+- [x] Face ID prompt while opening an entry doesn't cause a re-prompt loop.
 - [ ] Clone a GitHub repo over SSH with the device's Secure Enclave key added as a deploy key; pull after a desktop push.
-- [ ] Enable Passage under Settings › General › AutoFill & Passwords; QuickType shows entries for github.com after a sync.
-- [ ] Safari login: pick an entry → one Face ID → username and password filled. Also from a QuickType suggestion.
+- [x] Enable Passage under Settings › General › AutoFill & Passwords; QuickType shows entries for github.com after a sync.
+- [x] Safari login: pick an entry → one Face ID → username and password filled. Also from a QuickType suggestion.
 - [ ] One-time code field: Passage offers the code; text insertion (long-press › AutoFill › Passwords) inserts a chosen field.
 - [ ] AutoFill with a Files-folder store (does the security-scoped bookmark resolve inside the extension?).
 - [ ] Shortcuts: "Copy a password from Passage" asks for an entry, opens Passage, one Face ID, copies; "Sync Passage" runs without opening the app.
