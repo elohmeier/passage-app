@@ -186,13 +186,20 @@ enum Field25519 {
         var bytes = [UInt8](encoded)
         let xNegative = bytes[31] & 0x80 != 0
         bytes[31] &= 0x7F  // drop the sign of x
-        let y = (0..<4).map { i in (0..<8).reduce(UInt64(0)) { $0 | UInt64(bytes[i * 8 + $1]) << UInt64(8 * $1) } }
+        var y = Element(repeating: 0, count: 4)
+        for i in 0..<32 {
+            y[i / 8] |= UInt64(bytes[i]) << UInt64(8 * (i % 8))
+        }
         guard less(y, p), isOnCurve(y: y, xNegative: xNegative) else { return nil }
         let one: Element = [1, 0, 0, 0]
         let denominator = sub(one, y)
         guard denominator != [0, 0, 0, 0] else { return nil }  // y = 1 is the identity
         let u = mul(add(one, y), invert(denominator))
-        return Data((0..<32).map { UInt8(truncatingIfNeeded: u[$0 / 8] >> UInt64(8 * ($0 % 8))) })
+        var out = Data(count: 32)
+        for i in 0..<32 {
+            out[i] = UInt8(truncatingIfNeeded: u[i / 8] >> UInt64(8 * (i % 8)))
+        }
+        return out
     }
 
     static func less(_ a: Element, _ b: Element) -> Bool {
@@ -303,6 +310,11 @@ enum Field25519 {
     }
 
     static func shiftRight(_ a: Element) -> Element {
-        (0..<4).map { i in a[i] >> 1 | (i < 3 ? a[i + 1] << 63 : 0) }
+        var out = a
+        for i in 0..<4 {
+            let carry: UInt64 = i < 3 ? a[i + 1] << 63 : 0
+            out[i] = a[i] >> 1 | carry
+        }
+        return out
     }
 }
