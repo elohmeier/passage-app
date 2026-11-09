@@ -343,6 +343,17 @@ func gitHubSSHHostKeyIsPinned() async throws {
         #expect(result.conflictCopies == [".age-recipients (\(GitRepo.conflictSuffix(date)))"])
     }
 
+    @Test func unpushedWork() async throws {
+        let repo = try await GitRepo.clone(remote: fx.origin.path, into: clone)
+        #expect(try await repo.unpushedWork() == (0, 0))
+        try write("new.age", "x")
+        #expect(try await repo.unpushedWork() == (0, 1))
+        try await repo.commitAll(message: "new", author: phone)
+        #expect(try await repo.unpushedWork() == (1, 0))
+        _ = try await repo.sync(credentials: .none, author: phone)
+        #expect(try await repo.unpushedWork() == (0, 0))
+    }
+
     @Test func conflictCopyNames() {
         #expect(GitRepo.conflictCopyPath("a/b/work.age", suffix: "conflict X") == "a/b/work (conflict X).age")
         #expect(GitRepo.conflictCopyPath(".age-recipients", suffix: "conflict X") == ".age-recipients (conflict X)")

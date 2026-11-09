@@ -5,6 +5,8 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(StoreModel.self) private var store
     @State private var confirmingClose = false
+    /// Changes only in the local clone, which closing would delete.
+    @State private var unpushed = 0
     @State private var removingDeployKey: GitStoreConfig.GitHubLink?
     @State private var sshKey: String?
     @State private var autoFillStatus: String?
@@ -89,7 +91,12 @@ struct SettingsView: View {
                         LabeledContent("Folder", value: store.name)
                     }
                     LabeledContent("Entries", value: store.snapshot.entries.count, format: .number)
-                    Button("Close Store", role: .destructive) { confirmingClose = true }
+                    Button("Close Store", role: .destructive) {
+                        Task {
+                            unpushed = await store.unpushedChangeCount()
+                            confirmingClose = true
+                        }
+                    }
                 } header: {
                     Text("Store")
                 } footer: {
@@ -106,10 +113,17 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .task { sshKey = try? store.deviceSSHKey().publicKeyLine(comment: "passage-ios") }
         .confirmationDialog("Close \(store.name)?", isPresented: $confirmingClose, titleVisibility: .visible) {
+            if unpushed > 0 {
+                Button("Sync Now") { Task { await store.sync() } }
+            }
             if let link = store.gitConfig?.gitHub {
                 Button("Close and Remove Deploy Key…") { removingDeployKey = link }
             }
-            Button("Close Store", role: .destructive) { store.close() }
+            Button(unpushed > 0 ? "Close and Discard Changes" : "Close Store", role: .destructive) { store.close() }
+        } message: {
+            if unpushed > 0 {
+                Text("^[\(unpushed) change](inflect: true) on this device hasn't reached the remote yet and will be lost. Sync first to keep it.")
+            }
         }
         .sheet(item: $removingDeployKey) { RemoveDeployKeyView(link: $0) }
     }

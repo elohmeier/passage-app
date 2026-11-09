@@ -180,6 +180,31 @@ extension GitRepo {
         return (ahead, behind)
     }
 
+    /// Local work that exists only in this clone: commits not on the upstream (as of the last
+    /// fetch; all of them if nothing was pushed yet) and uncommitted changes, including new files.
+    public func unpushedWork() throws(GitError) -> (commits: Int, uncommitted: Int) {
+        var commits = 0
+        if !isEmpty {
+            if try upstreamID() != nil {
+                commits = try aheadBehind().ahead
+            } else {
+                var walk: OpaquePointer?
+                try check(git_revwalk_new(&walk, repo))
+                defer { git_revwalk_free(walk) }
+                try check(git_revwalk_push_head(walk))
+                var id = git_oid()
+                while git_revwalk_next(&id, walk) == 0 { commits += 1 }
+            }
+        }
+        var options = git_status_options()
+        try check(git_status_options_init(&options, UInt32(GIT_STATUS_OPTIONS_VERSION)))
+        options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED.rawValue | GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS.rawValue
+        var list: OpaquePointer?
+        try check(git_status_list_new(&list, repo, &options))
+        defer { git_status_list_free(list) }
+        return (commits, git_status_list_entrycount(list))
+    }
+
     // MARK: Merging
 
     /// Merges `upstream` into HEAD. Conflicting files keep the upstream version at their path

@@ -619,6 +619,13 @@ final class StoreModel {
 
     /// Forgets the store. A git clone lives inside the app and is deleted, together with its
     /// credentials; a Files folder is left untouched.
+    /// Changes that closing would lose: unpushed commits plus uncommitted files. Zero for
+    /// Files folders, where closing deletes nothing.
+    func unpushedChangeCount() async -> Int {
+        guard let git, let work = try? await git.unpushedWork() else { return 0 }
+        return work.commits + work.uncommitted
+    }
+
     func close(keepingSSHKey keep: String? = nil) {
         watcher?.stop()
         access?.close()
