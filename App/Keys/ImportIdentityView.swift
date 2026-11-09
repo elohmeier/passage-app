@@ -8,6 +8,7 @@ struct ImportIdentityView: View {
     @State private var name = "Imported Key"
     @State private var protection = KeyProtection.biometryCurrentSet
     @State private var showingFilePicker = false
+    @State private var scanning = false
 
     var body: some View {
         NavigationStack {
@@ -20,6 +21,7 @@ struct ImportIdentityView: View {
                         .textInputAutocapitalization(.characters)
                         .privacySensitive()
                     Button("Choose File…", systemImage: "folder") { showingFilePicker = true }
+                    Button("Scan QR Code", systemImage: "qrcode.viewfinder") { scanning = true }
                 } header: {
                     Text("Identity")
                 } footer: {
@@ -57,6 +59,13 @@ struct ImportIdentityView: View {
                         }
                     }
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .sheet(isPresented: $scanning) {
+                QRScannerView(title: "Scan Key") { code in
+                    guard code.uppercased().hasPrefix("AGE-SECRET-KEY-") else { return false }
+                    text = code
+                    return true
                 }
             }
             .fileImporter(isPresented: $showingFilePicker, allowedContentTypes: [.plainText, .data]) { result in

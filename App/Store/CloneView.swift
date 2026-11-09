@@ -13,6 +13,7 @@ struct CloneView: View {
     @State private var cloning = false
     @State private var hostToTrust: HostKey?
     @State private var publicKey: String?
+    @State private var scanning = false
 
     init(remote: String = "") {
         _remote = State(initialValue: remote)
@@ -32,6 +33,7 @@ struct CloneView: View {
                     TextField("git@github.com:you/password-store.git", text: $remote)
                         .keyboardType(.URL)
                     TextField("Branch (optional)", text: $branch)
+                    Button("Scan QR Code", systemImage: "qrcode.viewfinder") { scanning = true }
                 }
 
                 if isSSH {
@@ -83,6 +85,13 @@ struct CloneView: View {
                 }
             }
             .interactiveDismissDisabled(cloning)
+            .sheet(isPresented: $scanning) {
+                QRScannerView(title: "Scan Repository") { code in
+                    guard GitStoreConfig.isSSH(code) || code.hasPrefix("https://") else { return false }
+                    remote = code
+                    return true
+                }
+            }
             .alert(
                 "Trust \(hostToTrust?.host ?? "")?", isPresented: Binding(get: { hostToTrust != nil }, set: { if !$0 { hostToTrust = nil } }),
                 presenting: hostToTrust

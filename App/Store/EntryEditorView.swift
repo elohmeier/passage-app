@@ -24,6 +24,7 @@ struct EntryEditorView: View {
     @State private var draft: EntryDraft
     @State private var revealPassword = false
     @State private var showingGenerator = false
+    @State private var scanningOTP = false
     @State private var recipients: Result<[String], any Error>?
     @State private var saving = false
     @State private var error: String?
@@ -118,6 +119,7 @@ struct EntryEditorView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .font(.caption.monospaced())
+                    Button("Scan QR Code", systemImage: "qrcode.viewfinder") { scanningOTP = true }
                 } header: {
                     Text("One-Time Code")
                 } footer: {
@@ -156,6 +158,13 @@ struct EntryEditorView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", role: .confirm) { Task { await save() } }
                         .disabled(pathProblem != nil || saving)
+                }
+            }
+            .sheet(isPresented: $scanningOTP) {
+                QRScannerView(title: "Scan One-Time Code") { text in
+                    guard OTP(uri: text) != nil else { return false }
+                    draft.otpURI = text
+                    return true
                 }
             }
             .sheet(isPresented: $showingGenerator) {
