@@ -39,7 +39,9 @@ struct SecureEnclaveIdentityTests {
         }
     }
 
-    @Test(.enabled(if: screenUnlocked, "needs an unlocked screen"))
+    @Test(
+        .enabled(if: screenUnlocked, "needs an unlocked screen"),
+        .enabled(if: ProcessInfo.processInfo.environment["CI"] == nil, "CI runners are VMs without biometry"))
     func biometryProtectedKeyCanBeCreated() throws {
         // Creation doesn't prompt; using the key would.
         let key = try SecureEnclaveTagKey(protection: .biometryCurrentSet)

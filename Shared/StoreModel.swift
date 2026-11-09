@@ -209,8 +209,13 @@ final class StoreModel {
             let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConfig.appGroup)
                 ?? URL.applicationSupportDirectory
             let root = base.appending(path: "Demo Store", directoryHint: .isDirectory)
-            try DemoStore.create(at: root, recipients: [RecipientParser.parse(device.recommendedRecipient(alongside: []))])
+            let entries = try DemoStore.create(at: root, recipients: [RecipientParser.parse(device.recommendedRecipient(alongside: []))])
             open(pickedURL: root)
+            // The contents are known, so AutoFill works without running Prepare AutoFill.
+            Task {
+                await refresh()
+                for entry in entries { await AutoFillStore.learn(entry.path, from: Entry(entry.content)) }
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

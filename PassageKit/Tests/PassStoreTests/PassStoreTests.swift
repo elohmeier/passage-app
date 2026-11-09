@@ -201,7 +201,7 @@ import Testing
         try DemoStore.create(at: root, recipients: [id.recipient])
         let store = LocalStore(root: root)
         let snapshot = try await store.snapshot()
-        #expect(snapshot.entries.count == DemoStore.entries.count)
+        #expect(snapshot.entries.count == DemoStore.entries.count + 1, "plus a passkey")
         let mastodon = Entry(String(decoding: try Age.decrypt(await store.read(EntryPath("social/mastodon")), identities: [id]), as: UTF8.self))
         #expect(mastodon.otp != nil)
         #expect(try await store.recipients(for: EntryPath("home/wifi")).map(\.encoded) == [id.recipient.encoded])
