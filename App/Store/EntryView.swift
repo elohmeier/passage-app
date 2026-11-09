@@ -21,6 +21,13 @@ struct EntryView: View {
     @State private var editing: EntryEditorView.Mode?
     @State private var confirmingDelete = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.entryMoved) private var entryMoved
+
+    /// Leaves the entry after it was deleted (nil) or renamed: the split view selects the new
+    /// path, the stack pops back.
+    private func leave(to entry: EntryPath?) {
+        if let entryMoved { entryMoved(entry) } else { dismiss() }
+    }
 
     var body: some View {
         Group {
@@ -56,7 +63,7 @@ struct EntryView: View {
         }
         .sheet(item: $editing) { mode in
             EntryEditorView(mode: mode) { saved in
-                if saved != entry { dismiss() }
+                if saved != entry { leave(to: saved) }
                 Task { await decrypt() }
             }
         }
@@ -65,7 +72,7 @@ struct EntryView: View {
                 Task {
                     do {
                         try await store.delete(entry)
-                        dismiss()
+                        leave(to: nil)
                     } catch {
                         phase = .failed(error.localizedDescription)
                     }

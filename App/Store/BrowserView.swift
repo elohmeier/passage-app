@@ -11,7 +11,21 @@ enum Route: Hashable {
     case decryptFile
 }
 
+/// The store: a split view on iPad (regular width), a navigation stack on iPhone.
 struct BrowserView: View {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    var body: some View {
+        if sizeClass == .regular {
+            SplitBrowserView()
+        } else {
+            StackBrowserView()
+        }
+    }
+}
+
+/// The iPhone layout: folders drill down, entries push onto the stack.
+struct StackBrowserView: View {
     @Environment(AppModel.self) private var model
     @Environment(StoreModel.self) private var store
     @State private var path = NavigationPath()
@@ -69,17 +83,7 @@ struct BrowserView: View {
             #if DEBUG
                 .onAppear(perform: applyDebugRoute)
                 .sheet(item: $debugEditor) { EntryEditorView(mode: $0) }
-                .sheet(isPresented: Binding(get: { debugAutoFill != nil }, set: { if !$0 { debugAutoFill = nil } })) {
-                    // The AutoFill extension's picker, hosted in the app for screenshots.
-                    let target = debugAutoFill ?? ""
-                    let kind: PickerKind = target.hasPrefix("passkey:")
-                        ? .passkey(PasskeyRequest(relyingParty: String(target.dropFirst(8)), clientDataHash: Data(count: 32), allowedCredentials: []))
-                        : .password
-                    let select = target.hasPrefix("select:") ? EntryPath(String(target.dropFirst(7))) : nil
-                    CredentialPickerView(
-                        kind: kind, services: select == nil ? [target] : [], autoSelect: select, cancel: { debugAutoFill = nil },
-                        complete: { _ in debugAutoFill = nil })
-                }
+                .modifier(DebugAutoFillSheet(target: $debugAutoFill))
             #endif
             .navigationDestination(for: Route.self) { route in
                 switch route {
@@ -96,7 +100,26 @@ struct BrowserView: View {
 }
 
 #if DEBUG
-    extension BrowserView {
+    /// The AutoFill extension's picker, hosted in the app for screenshots. `target` is a
+    /// service URL, `passkey:<rp>` or `select:<entry>`.
+    struct DebugAutoFillSheet: ViewModifier {
+        @Binding var target: String?
+
+        func body(content: Content) -> some View {
+            content.sheet(isPresented: Binding(get: { target != nil }, set: { if !$0 { target = nil } })) {
+                let target = target ?? ""
+                let kind: PickerKind = target.hasPrefix("passkey:")
+                    ? .passkey(PasskeyRequest(relyingParty: String(target.dropFirst(8)), clientDataHash: Data(count: 32), allowedCredentials: []))
+                    : .password
+                let select = target.hasPrefix("select:") ? EntryPath(String(target.dropFirst(7))) : nil
+                CredentialPickerView(
+                    kind: kind, services: select == nil ? [target] : [], autoSelect: select, cancel: { self.target = nil },
+                    complete: { _ in self.target = nil })
+            }
+        }
+    }
+
+    extension StackBrowserView {
         /// `-PassageRoute entry:path`, `folder:path`, `search:query`, `keys` or `settings`.
         fileprivate func applyDebugRoute() {
             guard path.isEmpty, let route = UserDefaults.standard.string(forKey: "PassageRoute") else { return }
