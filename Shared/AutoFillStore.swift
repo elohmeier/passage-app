@@ -39,6 +39,14 @@ enum AutoFillStore {
         await publish(index)
     }
 
+    /// Applies a Signal API report and republishes.
+    static func report(_ change: (inout AutoFillIndex) -> Void) async {
+        var index = load()
+        change(&index)
+        save(index)
+        await publish(index)
+    }
+
     static func clear() async {
         try? FileManager.default.removeItem(at: url)
         try? await ASCredentialIdentityStore.shared.removeAllCredentialIdentities()
@@ -50,6 +58,7 @@ enum AutoFillStore {
         var identities: [any ASCredentialIdentity] = []
         for item in index.items {
             if let p = item.passkey {
+                if index.isStale(item) { continue }
                 identities.append(ASPasskeyCredentialIdentity(
                     relyingPartyIdentifier: p.relyingParty, userName: p.userName, credentialID: p.credentialID,
                     userHandle: p.userHandle, recordIdentifier: item.path))

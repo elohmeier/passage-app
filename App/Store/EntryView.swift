@@ -140,7 +140,12 @@ private struct EntryDetail: View {
                 } header: {
                     Label("Passkey", systemImage: "person.badge.key")
                 } footer: {
-                    Text("Used through AutoFill when \(passkey.relyingParty) asks for a passkey. The private key is stored in this entry, encrypted like your passwords.")
+                    if AutoFillStore.load().staleCredentialIDs?.contains(passkey.credentialID) == true {
+                        Text("\(passkey.relyingParty) reported that it no longer knows this passkey, so AutoFill doesn't offer it. If you deleted it on the website, you can delete this entry.")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text("Used through AutoFill when \(passkey.relyingParty) asks for a passkey. The private key is stored in this entry, encrypted like your passwords.")
+                    }
                 }
             }
             Section {

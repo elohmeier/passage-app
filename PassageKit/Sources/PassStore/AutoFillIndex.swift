@@ -35,19 +35,52 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
     }
 
     public var items: [Item]
+    /// Passkey credential IDs a website reported as unknown (deleted there). They're hidden
+    /// from AutoFill; the entries themselves stay.
+    public var staleCredentialIDs: [Data]?
 
     public init(items: [Item] = []) {
         self.items = items
+    }
+
+    public func isStale(_ item: Item) -> Bool {
+        guard let id = item.passkey?.credentialID else { return false }
+        return staleCredentialIDs?.contains(id) ?? false
+    }
+
+    /// Signal API: the site doesn't know this credential anymore.
+    public mutating func markUnknown(relyingParty: String, credentialID: Data) {
+        guard items.contains(where: { $0.passkey?.credentialID == credentialID && $0.passkey?.relyingParty.lowercased() == relyingParty.lowercased() })
+        else { return }
+        staleCredentialIDs = Array(Set((staleCredentialIDs ?? []) + [credentialID]))
+    }
+
+    /// Signal API: the complete list of credentials the site accepts for this user.
+    public mutating func markAccepted(relyingParty: String, userHandle: Data, accepted: [Data]) {
+        let ours = items.compactMap(\.passkey).filter { $0.relyingParty.lowercased() == relyingParty.lowercased() && $0.userHandle == userHandle }
+        let rejected = ours.map(\.credentialID).filter { !accepted.contains($0) }
+        var stale = Set(staleCredentialIDs ?? []).subtracting(accepted)
+        stale.formUnion(rejected)
+        staleCredentialIDs = stale.isEmpty ? nil : Array(stale)
+    }
+
+    /// Signal API: the site renamed the account; update what AutoFill shows.
+    public mutating func rename(relyingParty: String, userHandle: Data, to name: String) {
+        for i in items.indices where items[i].passkey?.relyingParty.lowercased() == relyingParty.lowercased() && items[i].passkey?.userHandle == userHandle {
+            items[i].passkey?.userName = name
+        }
     }
 
     /// Rebuilds the index for `entries`: content-derived items are kept for entries that still
     /// exist, everything else is guessed from the path.
     public func updated(for entries: [EntryPath]) -> AutoFillIndex {
         let known = Dictionary(items.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
-        return AutoFillIndex(items: entries.map { entry in
+        var index = AutoFillIndex(items: entries.map { entry in
             if let item = known[entry.path], item.fromContent { return item }
             return Self.guess(entry)
         })
+        index.staleCredentialIDs = staleCredentialIDs
+        return index
     }
 
     /// Records what a decrypted entry says about itself.
@@ -107,8 +140,9 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
 public enum AutoFillMatcher {
     /// Passkey items for a relying party, optionally limited to the credential IDs the site
     /// allows. Passkeys are bound to their exact RP ID, so no subdomain matching here.
-    public static func passkeys(_ items: [AutoFillIndex.Item], relyingParty: String, allowed: [Data] = []) -> [AutoFillIndex.Item] {
+    public static func passkeys(_ items: [AutoFillIndex.Item], relyingParty: String, allowed: [Data] = [], stale: [Data] = []) -> [AutoFillIndex.Item] {
         items.filter { item in
+            if let id = item.passkey?.credentialID, stale.contains(id) { return false }
             guard let p = item.passkey, p.relyingParty.lowercased() == relyingParty.lowercased() else { return false }
             return allowed.isEmpty || allowed.contains(p.credentialID)
         }

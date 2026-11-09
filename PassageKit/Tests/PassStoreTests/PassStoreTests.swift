@@ -492,3 +492,50 @@ import Testing
         #expect(AutoFillMatcher.passkeys(items, relyingParty: "gist.github.com").isEmpty, "exact RP ID only")
     }
 }
+
+@Suite struct CredentialImportTests {
+    @Test func loginsAndPasskeys() {
+        var github = ImportedItem(title: "GitHub")
+        github.urls = ["https://github.com/login"]
+        github.userName = "alice"
+        github.password = "pw"
+        github.otp = OTP(kind: .totp(period: 30), secret: Data("12345678901234567890".utf8), issuer: "GitHub", account: "alice")
+        github.notes = ["recovery: in the safe"]
+        let passkey = Passkey.create(relyingParty: "github.com", userName: "alice", userHandle: Data([1]))
+        github.passkeys = [passkey]
+        var wifi = ImportedItem(title: "../Home WiFi")
+        wifi.password = "hunter2"
+
+        let entries = CredentialImport.entries(for: [github, wifi], existing: [EntryPath("imported/github.com/alice")])
+        #expect(entries.map(\.path.path) == ["imported/github.com/alice-2", "passkeys/github.com/alice", "imported/_home wifi/login"])
+        let login = Entry(entries[0].text)
+        #expect(login.password == "pw" && login.username == "alice" && login.url == "https://github.com/login")
+        #expect(login.otp?.code(at: Date(timeIntervalSince1970: 59)) == OTP(kind: .totp(period: 30), secret: Data("12345678901234567890".utf8)).code(at: Date(timeIntervalSince1970: 59)))
+        #expect(login.fields.contains { $0.key == "notes" && $0.value == "recovery: in the safe" })
+        #expect(Passkey(entry: Entry(entries[1].text)) == passkey)
+        #expect(!entries[2].path.path.contains(".."), "titles can't escape the folder")
+    }
+}
+
+@Suite struct PasskeySignalTests {
+    @Test func unknownAndAccepted() {
+        let a = Passkey.create(relyingParty: "example.com", userName: "u", userHandle: Data([1]))
+        let b = Passkey.create(relyingParty: "example.com", userName: "u", userHandle: Data([1]))
+        var index = AutoFillIndex().updated(for: [EntryPath("passkeys/example.com/a"), EntryPath("passkeys/example.com/b")])
+        index.learn(EntryPath("passkeys/example.com/a"), from: Entry(a.entryText))
+        index.learn(EntryPath("passkeys/example.com/b"), from: Entry(b.entryText))
+
+        index.markUnknown(relyingParty: "example.com", credentialID: a.credentialID)
+        #expect(AutoFillMatcher.passkeys(index.items, relyingParty: "example.com", stale: index.staleCredentialIDs ?? []).map(\.path) == ["passkeys/example.com/b"])
+        index.markUnknown(relyingParty: "other.com", credentialID: b.credentialID)
+        #expect(index.staleCredentialIDs == [a.credentialID], "only for the matching RP")
+
+        // The site now accepts a again but not b.
+        index.markAccepted(relyingParty: "example.com", userHandle: Data([1]), accepted: [a.credentialID])
+        #expect(index.staleCredentialIDs == [b.credentialID])
+        #expect(index.updated(for: index.items.map { EntryPath($0.path) }).staleCredentialIDs == [b.credentialID], "kept across refreshes")
+
+        index.rename(relyingParty: "example.com", userHandle: Data([1]), to: "new name")
+        #expect(index.items.allSatisfy { $0.passkey?.userName == "new name" })
+    }
+}

@@ -12,6 +12,14 @@
 				<true/>
 				<key>ProvidesPasskeys</key>
 				<true/>
+				<key>SupportsCredentialUpdate</key>
+				<true/>
+				<key>SupportsCredentialExchange</key>
+				<true/>
+				<key>SupportedCredentialExchangeVersions</key>
+				<array>
+					<string>1.0</string>
+				</array>
 				<key>ProvidesOneTimeCodes</key>
 				<true/>
 				<key>ProvidesTextToInsert</key>

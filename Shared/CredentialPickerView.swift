@@ -47,8 +47,10 @@ struct CredentialPickerView: View {
 
     private var suggested: [EntryPath] {
         if case .passkey(let request) = kind {
-            return AutoFillMatcher.passkeys(index.items, relyingParty: request.relyingParty, allowed: request.allowedCredentials)
-                .map { EntryPath($0.path) }
+            let index = index
+            return AutoFillMatcher.passkeys(
+                index.items, relyingParty: request.relyingParty, allowed: request.allowedCredentials, stale: index.staleCredentialIDs ?? []
+            ).map { EntryPath($0.path) }
         }
         var seen = Set<String>()
         return services.flatMap { AutoFillMatcher.match(index.items, service: $0) }
@@ -104,7 +106,8 @@ struct CredentialPickerView: View {
                         description: Text("Open the Passage app and set up your store first."))
                 }
             }
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
+            // Passkeys are bound to the site, so there's nothing to search for.
+            .modifier(OptionalSearch(enabled: !isPasskey, query: $query))
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .navigationTitle(title)
@@ -237,5 +240,18 @@ private struct TextChoiceView: View {
             }
         }
         .tint(.primary)
+    }
+}
+
+private struct OptionalSearch: ViewModifier {
+    let enabled: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always))
+        } else {
+            content
+        }
     }
 }

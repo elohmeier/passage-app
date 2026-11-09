@@ -65,6 +65,26 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         host(registration)
     }
 
+    // MARK: Signal API (iOS 26): websites report changes to their passkeys
+
+    override func reportUnknownPublicKeyCredential(forRelyingParty relyingParty: String, credentialID: Data) {
+        Task { await AutoFillStore.report { $0.markUnknown(relyingParty: relyingParty, credentialID: credentialID) } }
+    }
+
+    override func reportAllAcceptedPublicKeyCredentials(
+        forRelyingParty relyingParty: String, userHandle: Data, acceptedCredentialIDs: [Data]
+    ) {
+        Task {
+            await AutoFillStore.report {
+                $0.markAccepted(relyingParty: relyingParty, userHandle: userHandle, accepted: acceptedCredentialIDs)
+            }
+        }
+    }
+
+    override func reportPublicKeyCredentialUpdate(forRelyingParty relyingParty: String, userHandle: Data, newName: String) {
+        Task { await AutoFillStore.report { $0.rename(relyingParty: relyingParty, userHandle: userHandle, to: newName) } }
+    }
+
     override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
         show(.oneTimeCode, services: serviceIdentifiers)
     }

@@ -1,3 +1,4 @@
+import AuthenticationServices
 import KeyStore
 import PassStore
 import SwiftUI
@@ -95,6 +96,16 @@ struct PassageApp: App {
                     Text(model.errorMessage ?? "")
                 }
                 .modifier(PINPrompt(service: YubiKeyService.shared))
+                // Credential Exchange: another app (e.g. Apple Passwords) hands over credentials.
+                .onContinueUserActivity(ASCredentialExchangeActivity) { activity in
+                    Task { await CredentialExchangeImport.shared.handle(activity) }
+                }
+                .sheet(isPresented: Binding(
+                    get: { CredentialExchangeImport.shared.pending != nil },
+                    set: { if !$0 { CredentialExchangeImport.shared.pending = nil } })
+                ) {
+                    if let pending = CredentialExchangeImport.shared.pending { CredentialImportView(pending: pending) }
+                }
                 .alert(
                     "Conflicting Edits", isPresented: Binding(get: { !store.conflictCopies.isEmpty }, set: { if !$0 { store.conflictCopies = [] } })
                 ) {

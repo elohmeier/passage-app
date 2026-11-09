@@ -2,6 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Credential Exchange (iOS 26): importing from Apple Passwords and other managers. -->
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>ASCredentialExchangeActivity</string>
+	</array>
 	<!-- YubiKey over NFC: PIV, and the YubiKey management application (serial number). -->
 	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>
 	<array>

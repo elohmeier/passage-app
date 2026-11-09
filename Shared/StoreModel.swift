@@ -400,6 +400,18 @@ final class StoreModel {
         }
     }
 
+    /// Writes many new entries in one commit (e.g. an import). Returns true if it reached the remote.
+    @discardableResult
+    func importEntries(_ entries: [(path: EntryPath, text: String)], message: String) async throws -> Bool {
+        guard let store else { throw StoreError.accessDenied }
+        return try await withWriteLock {
+            for entry in entries {
+                try await store.save(entry.path, plaintext: Data(entry.text.utf8))
+            }
+            return await commitLocked(message)
+        }
+    }
+
     /// Saves edited content under a new name and removes the old one, as one commit.
     func rename(_ from: EntryPath, to: EntryPath, text: String) async throws {
         guard let store else { throw StoreError.accessDenied }
