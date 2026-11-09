@@ -75,8 +75,9 @@ struct BrowserView: View {
                     let kind: PickerKind = target.hasPrefix("passkey:")
                         ? .passkey(PasskeyRequest(relyingParty: String(target.dropFirst(8)), clientDataHash: Data(count: 32), allowedCredentials: []))
                         : .password
+                    let select = target.hasPrefix("select:") ? EntryPath(String(target.dropFirst(7))) : nil
                     CredentialPickerView(
-                        kind: kind, services: [target], autoSelect: nil, cancel: { debugAutoFill = nil },
+                        kind: kind, services: select == nil ? [target] : [], autoSelect: select, cancel: { debugAutoFill = nil },
                         complete: { _ in debugAutoFill = nil })
                 }
             #endif
@@ -108,6 +109,7 @@ struct BrowserView: View {
             case "new": debugEditor = .new(folder: arg)
             case "autofill": debugAutoFill = arg
             case "autofillpasskey": debugAutoFill = "passkey:" + arg
+            case "autofillselect": debugAutoFill = "select:" + arg
             case "identity":
                 if let device = model.deviceIdentity { path.append(Route.identity(device)) }
             case "settings": path.append(Route.settings)

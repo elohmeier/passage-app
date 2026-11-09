@@ -76,10 +76,8 @@ struct CredentialPickerView: View {
 
     var body: some View {
         Group {
-            if autoSelect != nil && autoSelecting {
-                Color(uiColor: .systemBackground)
-                    .ignoresSafeArea()
-                    .overlay { ProgressView().opacity(working == nil ? 0 : 1) }
+            if let autoSelect, autoSelecting {
+                UnlockingView(entry: autoSelect, isPasskey: isPasskey, cancel: cancel)
             } else {
                 picker
             }
@@ -233,6 +231,45 @@ struct CredentialPickerView: View {
             self.error = error.localizedDescription
         }
         return true
+    }
+}
+
+/// Shown while an entry picked in QuickType is unlocked: iOS only allows Face ID once this
+/// sheet is up, so it's briefly visible before and during the prompt.
+private struct UnlockingView: View {
+    let entry: EntryPath
+    let isPasskey: Bool
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            Image(systemName: "faceid")
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(.tint)
+                .symbolEffect(.pulse, options: .repeating)
+            VStack(spacing: 6) {
+                Text(isPasskey ? "Signing In with Passage" : "Filling from Passage")
+                    .font(.headline)
+                Label(entry.name, systemImage: isPasskey ? "person.badge.key" : "key.horizontal")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                if !entry.folder.isEmpty {
+                    Text(entry.folder)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .multilineTextAlignment(.center)
+            Spacer()
+            Button("Cancel", role: .cancel, action: cancel)
+                .buttonStyle(.bordered)
+                .padding(.bottom)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .accessibilityElement(children: .contain)
     }
 }
 
