@@ -85,11 +85,12 @@ struct CredentialPickerView: View {
             }
         }
         .task {
-            // The extension's sheet may still be appearing, and Face ID is refused until it
-            // has (LAError.notInteractive). Try right away, retry a few times, then ask for a tap.
+            // Face ID is refused until the extension's sheet is in the foreground ("Caller is
+            // not running foreground", LAError.notInteractive). Poll briefly so Face ID starts
+            // as soon as it's allowed, then ask for a tap.
             guard let autoSelect else { return }
-            for attempt in 0..<5 {
-                if attempt > 0 { try? await Task.sleep(for: .milliseconds(attempt == 1 ? 300 : 700)) }
+            for attempt in 0..<30 {
+                if attempt > 0 { try? await Task.sleep(for: .milliseconds(100)) }
                 if await pick(autoSelect, automatic: true) {
                     // Completed, or failed with an error the list shows.
                     if error != nil { autoSelecting = false }
