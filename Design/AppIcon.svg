@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#0E1B4D"/>
+      <stop offset="1" stop-color="#2A6FD6"/>
+    </linearGradient>
+    <mask id="keyhole">
+      <rect width="1024" height="1024" fill="white"/>
+      <circle cx="512" cy="520" r="62" fill="black"/>
+      <path d="M484 560 L540 560 L566 700 L458 700 Z" fill="black"/>
+    </mask>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- receding arches: the passage -->
+  <path d="M232 860 V420 A280 280 0 0 1 792 420 V860" fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="36"/>
+  <path d="M292 860 V430 A220 220 0 0 1 732 430 V860" fill="none" stroke="#FFFFFF" stroke-opacity="0.30" stroke-width="36"/>
+  <!-- the door -->
+  <path d="M352 860 V440 A160 160 0 0 1 672 440 V860 Z" fill="#FFFFFF" mask="url(#keyhole)"/>
+</svg>
