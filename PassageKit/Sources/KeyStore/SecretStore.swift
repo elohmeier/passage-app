@@ -9,6 +9,9 @@ public protocol SecretStore: Sendable {
     /// Stores `data`. With `accessControl`, reading it requires the given user authentication;
     /// without, it is readable while the device is unlocked.
     func set(_ data: Data, for key: String, accessControl: SecAccessControl?) throws(KeyStoreError)
+    /// Stores `data` readable after the first unlock since boot, without user presence. Only
+    /// for credentials background work needs (git sync), never for identity keys.
+    func setAvailableAfterFirstUnlock(_ data: Data, for key: String) throws(KeyStoreError)
     /// Reads an item. `context` is used to satisfy access control without another prompt.
     func get(_ key: String, context: LAContext?) throws(KeyStoreError) -> Data?
     func delete(_ key: String) throws(KeyStoreError)
@@ -50,6 +53,15 @@ public struct KeychainSecretStore: SecretStore {
         guard status == errSecSuccess else { throw .keychain(status) }
     }
 
+    public func setAvailableAfterFirstUnlock(_ data: Data, for key: String) throws(KeyStoreError) {
+        try delete(key)
+        var q = query(key)
+        q[kSecValueData as String] = data
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(q as CFDictionary, nil)
+        guard status == errSecSuccess else { throw .keychain(status) }
+    }
+
     public func get(_ key: String, context: LAContext?) throws(KeyStoreError) -> Data? {
         var q = query(key)
         q[kSecReturnData as String] = true
@@ -83,6 +95,10 @@ public final class InMemorySecretStore: SecretStore {
 
     public func get(_ key: String, context: LAContext?) throws(KeyStoreError) -> Data? {
         items.withLock { $0[key] }
+    }
+
+    public func setAvailableAfterFirstUnlock(_ data: Data, for key: String) throws(KeyStoreError) {
+        items.withLock { $0[key] = data }
     }
 
     public func delete(_ key: String) throws(KeyStoreError) {

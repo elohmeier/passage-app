@@ -1,10 +1,19 @@
 import AuthenticationServices
+import BackgroundTasks
 import KeyStore
 import PassStore
 import SwiftUI
 
 @main
 struct PassageApp: App {
+    static let refreshTask = "de.nerdworks.passage.refresh"
+
+    static func scheduleRefresh() async {
+        let request = BGAppRefreshTaskRequest(identifier: refreshTask)
+        request.earliestBeginDate = .now.addingTimeInterval(60 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
     init() {
         PassageEnvironment.model.hardwareKeyAgreement = { identity, share in
             try await YubiKeyService.shared.keyAgreement(for: identity, share: share)
@@ -121,9 +130,17 @@ struct PassageApp: App {
                     Text(store.errorMessage ?? "")
                 }
         }
+        // Background refresh: sync the git store now and then, so AutoFill and the app open
+        // with current data. Fetch, merge and push need no keys; nothing is decrypted.
+        .backgroundTask(.appRefresh(Self.refreshTask)) {
+            await Self.scheduleRefresh()
+            await MainActor.run { PassageEnvironment.store.restore() }
+            await PassageEnvironment.store.sync(.automatic)
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .background:
+                Task { await Self.scheduleRefresh() }
                 model.lock()
                 YubiKeyService.shared.forgetPIN()
             case .active:

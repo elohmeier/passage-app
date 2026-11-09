@@ -100,7 +100,7 @@ final class StoreModel {
             return key
         }
         let key = (try? SSHKey.generateSecureEnclave()) ?? .generateEd25519()
-        try secrets.set(try JSONEncoder().encode(key), for: Self.sshKeyKey, accessControl: nil)
+        try secrets.setAvailableAfterFirstUnlock(try JSONEncoder().encode(key), for: Self.sshKeyKey)
         return key
     }
 
@@ -108,7 +108,7 @@ final class StoreModel {
     func newStoreSSHKey() throws -> (key: SSHKey, name: String) {
         let key = (try? SSHKey.generateSecureEnclave()) ?? .generateEd25519()
         let name = "ssh.key.\(UUID().uuidString)"
-        try secrets.set(try JSONEncoder().encode(key), for: name, accessControl: nil)
+        try secrets.setAvailableAfterFirstUnlock(try JSONEncoder().encode(key), for: name)
         return (key, name)
     }
 
@@ -139,6 +139,20 @@ final class StoreModel {
     static var gitStoresRoot: URL {
         (FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConfig.appGroup) ?? .applicationSupportDirectory)
             .appending(path: "Stores", directoryHint: .isDirectory)
+    }
+
+    /// Git clones are readable after the first unlock so background refresh can sync while
+    /// the phone is locked. They only hold age-encrypted entries, file names and git metadata;
+    /// the identities that decrypt them stay protected by Face ID. New files inherit the
+    /// directory's class; existing ones are migrated here.
+    static func relaxProtection(of url: URL) {
+        let fm = FileManager.default
+        let attributes: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        try? fm.setAttributes(attributes, ofItemAtPath: url.path)
+        guard let enumerator = fm.enumerator(at: url, includingPropertiesForKeys: nil) else { return }
+        for case let item as URL in enumerator {
+            try? fm.setAttributes(attributes, ofItemAtPath: item.path)
+        }
     }
 
     /// Reopens the store from the last session, if any.
@@ -203,6 +217,7 @@ final class StoreModel {
         let directory = UUID().uuidString
         let target = Self.gitStoresRoot.appending(path: directory, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: Self.gitStoresRoot, withIntermediateDirectories: true)
+        Self.relaxProtection(of: Self.gitStoresRoot)
         let credentials: GitCredentials = if GitStoreConfig.isSSH(remote) {
             .ssh(username: username.isEmpty ? nil : username, key: try sshKey(named: sshKeyName))
         } else if password.isEmpty {
@@ -213,6 +228,8 @@ final class StoreModel {
 
         cloneProgress = GitProgress(receivedObjects: 0, totalObjects: 0, receivedBytes: 0)
         defer { cloneProgress = nil }
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        Self.relaxProtection(of: target)
         _ = try await GitRepo.clone(
             remote: remote, into: target, branch: branch, credentials: credentials, knownHosts: knownHosts
         ) { [weak self] progress in
@@ -222,7 +239,7 @@ final class StoreModel {
         let config = GitStoreConfig(
             directory: directory, remote: remote, branch: branch, username: username, sshKeyName: sshKeyName, gitHub: gitHub)
         if !password.isEmpty && !config.usesSSH {
-            try secrets.set(Data(password.utf8), for: Self.gitPasswordKey, accessControl: nil)
+            try secrets.setAvailableAfterFirstUnlock(Data(password.utf8), for: Self.gitPasswordKey)
         }
         defaults.set(try JSONEncoder().encode(config), forKey: Self.gitConfigKey)
         try attachGit(config)
@@ -489,11 +506,24 @@ final class StoreModel {
         git = repo
         gitConfig = config
         gitLock = ProcessLock(path: root.appending(path: ".git/passage.lock").path)
+        migrateForBackgroundRefresh(config, root: root)
         store = LocalStore(root: root)
         Task {
             lastCommit = try? await repo.headCommit()
             await refresh()
         }
+    }
+
+    /// Stores set up before background refresh: relax the clone's file protection and move the
+    /// sync credentials to after-first-unlock availability. Runs once per store.
+    private func migrateForBackgroundRefresh(_ config: GitStoreConfig, root: URL) {
+        let flag = "migratedBackgroundRefresh.\(config.directory)"
+        guard !defaults.bool(forKey: flag) else { return }
+        Self.relaxProtection(of: root)
+        for key in [config.sshKeyName ?? Self.sshKeyKey, Self.gitPasswordKey] {
+            if let data = try? secrets.get(key, context: nil) { try? secrets.setAvailableAfterFirstUnlock(data, for: key) }
+        }
+        defaults.set(true, forKey: flag)
     }
 
     /// e.g. `github.com/alice/pass` → `pass`.

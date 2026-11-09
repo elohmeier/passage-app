@@ -12,7 +12,15 @@ enum AutoFillStore {
     }
 
     static func load() -> AutoFillIndex {
-        guard let data = try? Data(contentsOf: url) else { return AutoFillIndex() }
+        loadIfReadable() ?? AutoFillIndex()
+    }
+
+    /// Nil if the index exists but can't be read, e.g. while the phone is locked (it has
+    /// complete file protection) during a background refresh. Writers must not overwrite it
+    /// then, or everything learned from decrypted entries would be lost.
+    static func loadIfReadable() -> AutoFillIndex? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return AutoFillIndex() }
+        guard let data = try? Data(contentsOf: url) else { return nil }
         return (try? JSONDecoder().decode(AutoFillIndex.self, from: data)) ?? AutoFillIndex()
     }
 
@@ -24,14 +32,15 @@ enum AutoFillStore {
 
     /// Updates the index for the current entries and republishes it.
     static func update(entries: [EntryPath]) async {
-        let index = load().updated(for: entries)
+        guard let current = loadIfReadable() else { return }
+        let index = current.updated(for: entries)
         save(index)
         await publish(index)
     }
 
     /// Records a decrypted entry's url/username/OTP and republishes.
     static func learn(_ entry: EntryPath, from content: Entry) async {
-        var index = load()
+        guard var index = loadIfReadable() else { return }
         let before = index
         index.learn(entry, from: content)
         guard index != before else { return }
@@ -41,7 +50,7 @@ enum AutoFillStore {
 
     /// Applies a Signal API report and republishes.
     static func report(_ change: (inout AutoFillIndex) -> Void) async {
-        var index = load()
+        guard var index = loadIfReadable() else { return }
         change(&index)
         save(index)
         await publish(index)
