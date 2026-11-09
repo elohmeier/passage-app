@@ -1,4 +1,3 @@
-import AgeCrypto
 import AuthenticationServices
 import KeyStore
 import PassStore
@@ -131,14 +130,9 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             let content: Entry, userVerified: Bool
             do {
                 let plaintext: Data
-                (plaintext, userVerified) = try await model.decryptVerifying(store.read(entry), silent: true)
-                log.info("silent decrypt succeeded")
+                (plaintext, userVerified) = try await model.decryptVerifying(store.read(entry))
                 content = Entry(String(decoding: plaintext, as: UTF8.self))
             } catch KeyStoreError.cancelled {
-                extensionContext.cancelRequest(withError: ASExtensionError(.userCanceled))
-                return
-            } catch AgeError.identityUnavailable(SecureEnclaveTagKey.cancelledMessage) {
-                // Face ID shown by the key operation and dismissed: don't retry with our UI.
                 extensionContext.cancelRequest(withError: ASExtensionError(.userCanceled))
                 return
             } catch {

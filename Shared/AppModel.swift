@@ -130,12 +130,9 @@ final class AppModel {
     }
 
     /// Also tells whether the user was verified (for a passkey's UV flag).
-    /// `silent`: no UI of ours is on screen (AutoFill's silent fill); see
-    /// `IdentityStore.decryptVerifying(promptInKeyOperation:)`.
-    func decryptVerifying(_ data: Data, silent: Bool = false) async throws -> (plaintext: Data, userVerified: Bool) {
+    func decryptVerifying(_ data: Data) async throws -> (plaintext: Data, userVerified: Bool) {
         try await identityStore.decryptVerifying(
-            data, sessions: sessions, reason: String(localized: "Unlock your keys to decrypt"), hardware: hardwareKeyAgreement,
-            promptInKeyOperation: silent)
+            data, sessions: sessions, reason: String(localized: "Unlock your keys to decrypt"), hardware: hardwareKeyAgreement)
     }
 
     func addYubiKey(_ ref: StoredIdentity.YubiKeyRef, name: String) -> Bool {
