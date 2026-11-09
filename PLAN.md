@@ -225,6 +225,8 @@ v1 = M0 through M9. All three of git, Files folder and YubiKey ship in v1.
 
 ### On-device checklist
 
+Verified on build 4 (2026-11-09): passkey registration and sign-in on webauthn.io; the extension committed and pushed `passkeys/webauthn.io/Test.age` to the real store.
+
 Verified on build 3 (2026-11-09): device key, desktop re-encrypt → pull → decrypt, AutoFill in Safari, no alert after unlock, Connect GitHub (including reconnect after Safari), Keys detail page.
 
 Things `swift test` on the Mac can't cover:
@@ -253,7 +255,7 @@ Things `swift test` on the Mac can't cover:
 - [ ] Control Center: add the Sync and Search Passwords controls; Sync works with the app closed (background, SSH deploy key), Search opens the app with search focused.
 - [ ] YubiKey (5 series, NFC): Add YubiKey finds the age-plugin-yubikey slot; an entry encrypted on the Mac with `-r age1yubikey1…` decrypts after PIN + tap; wrong PIN shows retries; the PIN isn't asked again until the app locks.
 - [ ] YubiKey over USB-C (plugged in): same without NFC.
-- [ ] Passkeys: create one on webauthn.io (Face ID, "Save Passkey in Passage"), then the commit shows up on GitHub; sign in with it; sign in from QuickType; the entry decrypts on the Mac and imports into KeePassXC.
+- [x] Passkeys: create one on webauthn.io (Face ID, "Save Passkey in Passage"), then the commit shows up on GitHub; sign in with it; sign in from QuickType; the entry decrypts on the Mac and imports into KeePassXC.
 - [ ] Passkey created while offline: "Saved on this iPhone" note; it's pushed with the next sync from the app.
 - [ ] Clone over SSH from a non-GitHub host: the fingerprint prompt appears once, and the host is listed under Known Hosts.
 
