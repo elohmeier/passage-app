@@ -142,6 +142,7 @@ struct FolderView: View {
             } else {
                 if folder.isEmpty {
                     SyncStatusSection()
+                    RecipientChangesSection()
                     SetUpStoreSection(settingUp: $settingUp)
                     RecipientStatusSection()
                 }

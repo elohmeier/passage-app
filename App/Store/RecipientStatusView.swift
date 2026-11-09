@@ -82,3 +82,70 @@ struct SyncStatusSection: View {
         }
     }
 }
+
+/// Recipient changes that arrived from elsewhere, to approve before new entries are encrypted
+/// to them; and the sync stop when both sides changed a `.age-recipients`.
+struct RecipientChangesSection: View {
+    @Environment(StoreModel.self) private var store
+    @State private var confirming = false
+
+    var body: some View {
+        if store.recipientsConflict {
+            Section {
+                Label("Recipients changed on both sides", systemImage: "person.2.badge.gearshape")
+                    .font(.headline)
+                Text("This device and the remote both changed who the store is encrypted to, so syncing stopped. Keeping the remote's version saves this device's as a conflict copy; you then review the result.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button("Keep the Remote's Recipients", systemImage: "arrow.down.circle") {
+                    Task { await store.syncKeepingRemoteRecipients() }
+                }
+                .disabled(store.isSyncing)
+            }
+        }
+        if !store.recipientChanges.isEmpty {
+            Section {
+                Label("Recipients changed", systemImage: "person.badge.shield.exclamationmark")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+                ForEach(store.recipientChanges) { change in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(change.folder.isEmpty ? "Whole store" : change.folder)
+                            .font(.subheadline.bold())
+                        ForEach(change.added, id: \.recipient) { added in
+                            Label {
+                                VStack(alignment: .leading) {
+                                    if let label = added.label { Text(label) }
+                                    Text(added.recipient)
+                                        .font(.caption.monospaced())
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "plus.circle.fill").foregroundStyle(.orange)
+                            }
+                        }
+                        ForEach(change.removed, id: \.self) { removed in
+                            Label {
+                                Text(removed)
+                                    .font(.caption.monospaced())
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            } icon: {
+                                Image(systemName: "minus.circle.fill").foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                Text("New entries will be readable by every recipient. If you don't recognize an added one, don't approve: someone with access to the repository may be trying to read your new passwords. Saving is paused until you decide.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Button("Approve Recipients", systemImage: "checkmark.shield") { confirming = true }
+                    .confirmationDialog("Encrypt new entries to these recipients?", isPresented: $confirming, titleVisibility: .visible) {
+                        Button("Approve") { Task { await store.approveRecipients() } }
+                    }
+            }
+        }
+    }
+}

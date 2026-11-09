@@ -28,6 +28,9 @@ public struct GitError: Error, LocalizedError, Equatable, Sendable {
         case unknownHostKey(HostKey)
         /// The host presented a different key than the one we trust.
         case hostKeyChanged(HostKey)
+        /// Both sides changed a `.age-recipients`; who can read the store must not be decided
+        /// automatically. Resolve on a computer.
+        case recipientsConflict
         case other
     }
 
@@ -43,6 +46,7 @@ public struct GitError: Error, LocalizedError, Equatable, Sendable {
         case .authentication: "Authentication failed: \(message)"
         case .diverged: "Your local copy and the remote have both changed. Merging comes in a later version."
         case .uncommittedChanges: "The local copy has changes that would be overwritten."
+        case .recipientsConflict: "This device and the remote both changed \(message), which decides who can read new entries. Review it, then sync keeping the remote's version (this device's is saved as a conflict copy)."
         case .pushRejected: "The server rejected the push: \(message)"
         case .network: "Couldn't reach the server. \(message)"
         case .unknownHostKey(let key): "The authenticity of \(key.host) can't be established. Its \(key.algorithm) key fingerprint is \(key.fingerprint)."

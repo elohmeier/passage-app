@@ -324,6 +324,25 @@ func gitHubSSHHostKeyIsPinned() async throws {
         #expect(try desktopFile("bank.age") == "edited on phone")
     }
 
+    @Test func recipientsConflictStopsUntilAccepted() async throws {
+        try fx.commit(".age-recipients", "age1base\n")
+        try fx.push()
+        let repo = try await GitRepo.clone(remote: fx.origin.path, into: clone)
+        try write(".age-recipients", "age1base\nage1phone\n")
+        try await repo.commitAll(message: "phone", author: phone)
+        try fx.commit(".age-recipients", "age1base\nage1attacker\n")
+        try fx.push()
+
+        await #expect(throws: GitError(kind: .recipientsConflict, message: ".age-recipients")) {
+            try await repo.sync(credentials: .none, author: phone, date: date)
+        }
+        #expect(try String(contentsOf: clone.appending(path: ".age-recipients"), encoding: .utf8) == "age1base\nage1phone\n")
+        #expect(try fx.git(["status", "--porcelain"], in: clone).isEmpty, "working tree untouched")
+
+        let result = try await repo.sync(credentials: .none, author: phone, date: date, acceptRemoteRecipients: true)
+        #expect(result.conflictCopies == [".age-recipients (\(GitRepo.conflictSuffix(date)))"])
+    }
+
     @Test func conflictCopyNames() {
         #expect(GitRepo.conflictCopyPath("a/b/work.age", suffix: "conflict X") == "a/b/work (conflict X).age")
         #expect(GitRepo.conflictCopyPath(".age-recipients", suffix: "conflict X") == ".age-recipients (conflict X)")

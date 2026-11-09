@@ -25,14 +25,21 @@ public struct OTP: Equatable, Sendable {
         kind: Kind, secret: Data, algorithm: Algorithm = .sha1, digits: Int = 6, steam: Bool = false,
         issuer: String? = nil, account: String? = nil
     ) {
-        self.kind = kind
+        // Values come from entry files; out-of-range ones would crash or produce nonsense.
+        if case .totp(let period) = kind, !Self.periods.contains(period) {
+            self.kind = .totp(period: 30)
+        } else {
+            self.kind = kind
+        }
         self.secret = secret
         self.algorithm = algorithm
-        self.digits = digits
+        self.digits = (1...10).contains(digits) ? digits : 6
         self.steam = steam
         self.issuer = issuer
         self.account = account
     }
+
+    static let periods = 1...86_400
 
     /// Parses an `otpauth://totp/Label?secret=…&issuer=…&algorithm=…&digits=…&period=…` URI.
     /// `otpauth://steam/…` and `encoder=steam` select Steam Guard codes.
@@ -72,7 +79,7 @@ public struct OTP: Equatable, Sendable {
         guard let secret = fields["otp_secret"].flatMap(Base32.decode), !secret.isEmpty else { return nil }
         let kind: Kind
         switch fields["otp_type"]?.lowercased() ?? "totp" {
-        case "totp": kind = .totp(period: fields["otp_period"].flatMap { Double($0) }.map { Int($0) } ?? 30)
+        case "totp": kind = .totp(period: fields["otp_period"].flatMap { Double($0) }.flatMap { $0.isFinite && Double(Self.periods.upperBound) >= $0 ? Int($0) : nil } ?? 30)
         case "hotp":
             guard let counter = fields["otp_counter"].flatMap(UInt64.init) else { return nil }
             kind = .hotp(counter: counter)

@@ -86,9 +86,8 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
     /// Records what a decrypted entry says about itself.
     public mutating func learn(_ entry: EntryPath, from content: Entry) {
         var item = Self.guess(entry)
-        if let host = content.url.flatMap(Self.host(of:)) {
-            item.domains = [host] + item.domains.filter { $0 != host }
-        }
+        // An explicit url: is authoritative; path guesses could name an unrelated host.
+        if let host = content.url.flatMap(Self.host(of:)) { item.domains = [host] }
         if let username = content.username { item.username = username }
         item.hasOTP = content.otp != nil
         item.fromContent = true
@@ -109,13 +108,16 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
         items.removeAll { $0.path == entry.path }
     }
 
-    /// Path heuristics: any component that looks like a host name is a domain; if the entry
-    /// sits directly inside such a folder (`github.com/alice`), its name is the username.
+    /// Path heuristics: folders that look like host names are domains; if the entry sits
+    /// directly inside one (`github.com/alice`), its name is the username, even if it looks
+    /// like a host (`github.com/jane.dev`). Only without such a folder is the entry's own name
+    /// a domain (`websites/github.com`).
     static func guess(_ entry: EntryPath) -> Item {
         let components = entry.path.split(separator: "/").map(String.init)
-        let domains = components.compactMap(normalizedHost)
+        var domains = components.dropLast().compactMap(normalizedHost)
+        if domains.isEmpty, let leaf = components.last.flatMap(normalizedHost) { domains = [leaf] }
         var username: String?
-        if components.count >= 2, normalizedHost(components[components.count - 2]) != nil, normalizedHost(components.last!) == nil {
+        if components.count >= 2, normalizedHost(components[components.count - 2]) != nil {
             username = components.last
         }
         return Item(path: entry.path, domains: domains, username: username, hasOTP: false, fromContent: false)
@@ -126,12 +128,13 @@ public struct AutoFillIndex: Codable, Equatable, Sendable {
         return URLComponents(string: withScheme)?.host.flatMap(normalizedHost)
     }
 
-    /// Lowercased host name if `s` looks like one (has a dot, valid characters, a letter TLD).
+    /// Lowercased host name if `s` looks like one (has a dot, valid characters, a letter TLD)
+    /// and isn't a public suffix, which would match unrelated sites.
     static func normalizedHost(_ s: String) -> String? {
         let h = s.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
         let labels = h.split(separator: ".", omittingEmptySubsequences: false)
         guard labels.count >= 2, labels.allSatisfy({ !$0.isEmpty && $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" } }),
-            let tld = labels.last, tld.count >= 2, tld.allSatisfy(\.isLetter)
+            let tld = labels.last, tld.count >= 2, tld.allSatisfy(\.isLetter), !PublicSuffix.contains(h)
         else { return nil }
         return h
     }
@@ -172,4 +175,26 @@ public enum AutoFillMatcher {
         }
         return scored.sorted { $0.1 != $1.1 ? $0.1 > $1.1 : $0.0.path < $1.0.path }.map(\.0)
     }
+}
+
+/// A small public suffix list: the multi-label suffixes of common country domains, and
+/// shared hosting domains where subdomains belong to different people. Entries for these
+/// never match other sites; a full list isn't worth shipping for a heuristic.
+enum PublicSuffix {
+    static let multiLabel: Set<String> = [
+        "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "ltd.uk", "plc.uk", "co.jp", "ne.jp", "or.jp", "ac.jp", "com.au", "net.au",
+        "org.au", "edu.au", "gov.au", "co.nz", "org.nz", "net.nz", "com.br", "net.br", "org.br", "com.cn", "net.cn", "org.cn",
+        "com.tw", "com.hk", "com.sg", "com.my", "co.in", "net.in", "org.in", "co.za", "org.za", "com.mx", "com.ar", "com.tr",
+        "co.kr", "or.kr", "co.il", "org.il", "co.id", "com.ua", "com.pl", "co.at", "or.at", "com.es", "com.pt", "com.co", "com.pe",
+    ]
+    /// Hosting domains: `alice.github.io` and `bob.github.io` are different sites.
+    static let shared: Set<String> = [
+        "github.io", "gitlab.io", "herokuapp.com", "vercel.app", "netlify.app", "pages.dev", "workers.dev", "web.app",
+        "firebaseapp.com", "appspot.com", "blogspot.com", "azurewebsites.net", "cloudfront.net", "amazonaws.com", "fly.dev",
+        "onrender.com", "glitch.me", "repl.co", "ngrok.io", "ngrok-free.app", "duckdns.org", "dyndns.org", "no-ip.org",
+        "wordpress.com", "tumblr.com", "neocities.org", "surge.sh", "translate.goog",
+    ]
+
+    /// True for a public suffix itself (`co.uk`, `github.io`), never a site of its own.
+    static func contains(_ host: String) -> Bool { multiLabel.contains(host) || shared.contains(host) }
 }

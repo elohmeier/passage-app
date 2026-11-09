@@ -160,3 +160,41 @@ import Testing
         #expect(TagIdentity(key: key).classicRecipient.canDecrypt(header))
     }
 }
+
+@Suite struct SSHKeyValidationTests {
+    func wire(_ fields: [Data]) -> Data {
+        fields.reduce(into: Data()) { out, f in
+            withUnsafeBytes(of: UInt32(f.count).bigEndian) { out.append(contentsOf: $0) }
+            out.append(f)
+        }
+    }
+
+    func ed25519Line(_ key: Data) -> String {
+        "ssh-ed25519 " + wire([Data("ssh-ed25519".utf8), key]).base64EncodedString()
+    }
+
+    @Test func ed25519PointsMustBeOnTheCurve() throws {
+        for _ in 0..<50 {
+            let key = Curve25519.Signing.PrivateKey().publicKey.rawRepresentation
+            #expect(throws: Never.self) { try SSHEd25519Recipient(ed25519Line(key)) }
+        }
+        // About half of all y values have no matching x.
+        var rejected = 0
+        for _ in 0..<200 {
+            var bytes = (0..<32).map { _ in UInt8.random(in: 0...255) }
+            bytes[31] &= 0x7F
+            if (try? SSHEd25519Recipient(ed25519Line(Data(bytes)))) == nil { rejected += 1 }
+        }
+        #expect((50...150).contains(rejected))
+    }
+
+    @Test func rsaExponentMustBeOddAndAtLeastThree() {
+        let modulus = Data([0x00, 0xC0] + (0..<255).map { _ in UInt8.random(in: 0...255) } + [0x01])
+        func line(_ e: [UInt8]) -> String {
+            "ssh-rsa " + wire([Data("ssh-rsa".utf8), Data(e), modulus]).base64EncodedString()
+        }
+        #expect(throws: AgeError.self) { try SSHRSARecipient(line([0x01])) }
+        #expect(throws: AgeError.self) { try SSHRSARecipient(line([0x01, 0x00, 0x00])) }
+        #expect(throws: Never.self) { try SSHRSARecipient(line([0x01, 0x00, 0x01])) }
+    }
+}

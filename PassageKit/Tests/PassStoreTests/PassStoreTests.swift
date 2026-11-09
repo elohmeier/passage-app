@@ -81,6 +81,15 @@ import Testing
         #expect((0..<10).map { otp.code(counter: UInt64($0)) } == expected)
     }
 
+    /// Hostile values from an entry file fall back to defaults instead of crashing.
+    @Test(arguments: ["inf", "nan", "-1", "0", "1e300", "999999999999"]) func outOfRangePeriod(period: String) {
+        let entry = Entry("pw\notp_secret: JBSWY3DPEHPK3PXP\notp_period: \(period)\notp_digits: 99\n")
+        #expect(entry.otp?.period == 30)
+        #expect(entry.otp?.digits == 6)
+        _ = entry.otp?.code()
+        #expect(OTP(uri: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP&period=\(period)&digits=-3")?.code().count == 6)
+    }
+
     /// RFC 6238 appendix B.
     @Test(arguments: [
         (59.0, "94287082", "46119246", "90693936"),
@@ -348,6 +357,14 @@ import Testing
         #expect(AutoFillIndex.guess(EntryPath("email/Fastmail.com")).username == nil)
         #expect(AutoFillIndex.guess(EntryPath("bank")).domains.isEmpty)
         #expect(AutoFillIndex.guess(EntryPath("version 1.2/x")).domains.isEmpty, "numeric TLDs aren't hosts")
+        // A host-like name inside a host folder is a username, not another domain.
+        let jane = AutoFillIndex.guess(EntryPath("github.com/jane.dev"))
+        #expect(jane.domains == ["github.com"] && jane.username == "jane.dev")
+        #expect(AutoFillIndex.guess(EntryPath("websites/github.com")).domains == ["github.com"])
+        // Public suffixes never become domains.
+        #expect(AutoFillIndex.guess(EntryPath("co.uk/x")).domains.isEmpty)
+        #expect(AutoFillIndex.guess(EntryPath("hosting/github.io")).domains.isEmpty)
+        #expect(AutoFillIndex.guess(EntryPath("alice.github.io/me")).domains == ["alice.github.io"])
     }
 
     @Test func learnsFromContentAndKeepsIt() {
@@ -359,6 +376,9 @@ import Testing
         let next = index.updated(for: [EntryPath("bank"), EntryPath("new.example/bob")])
         #expect(next.items.map(\.path) == ["bank", "new.example/bob"])
         #expect(next.items[0].fromContent)
+        // url: replaces path guesses.
+        index.learn(EntryPath("evil.example/github"), from: Entry("pw\nurl: https://github.com\n"))
+        #expect(index.items.first { $0.path == "evil.example/github" }?.domains == ["github.com"])
     }
 
     @Test func matching() {
@@ -581,5 +601,22 @@ extension NewStoreTests {
         #expect(try String(contentsOf: root.appending(path: "README.md"), encoding: .utf8) == "# mine")
         #expect(try await store.recipients(for: EntryPath("x")).count == 2)
         await #expect(throws: StoreError.alreadySetUp) { try await store.setUp(files: files) }
+    }
+}
+
+@Suite struct RecipientReviewTests {
+    @Test func changesWithLabels() {
+        let text = "# Laptop\nage1laptop\n\n# Someone\nage1new\nage1unlabeled\n"
+        let parsed = RecipientSet.parse(text)
+        #expect(parsed.recipients == ["age1laptop", "age1new", "age1unlabeled"])
+        #expect(parsed.labels == ["age1laptop": "Laptop", "age1new": "Someone"])
+
+        let approved = RecipientSet(folders: ["": ["age1laptop", "age1old"], "work": ["age1w"]])
+        let now = RecipientSet(folders: ["": parsed.recipients, "work": ["age1w"], "new": ["age1x"]])
+        let changes = now.changes(since: approved, labels: ["": parsed.labels])
+        #expect(changes.map(\.folder) == ["", "new"])
+        #expect(changes[0].added.map(\.label) == ["Someone", nil])
+        #expect(changes[0].removed == ["age1old"])
+        #expect(now.changes(since: now).isEmpty)
     }
 }

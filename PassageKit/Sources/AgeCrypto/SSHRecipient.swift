@@ -65,6 +65,11 @@ public struct SSHRSARecipient: AgeRecipient {
         }
         let modulus = n.drop { $0 == 0 }
         guard modulus.count * 8 >= 2048 else { throw .invalidEncoding("RSA key size is too small") }
+        // Like age: an odd public exponent of at least 3 (e = 1 would send the file key in the clear).
+        let exponent = e.drop { $0 == 0 }
+        guard let last = exponent.last, last & 1 == 1, exponent.count > 1 || last >= 3, exponent.count <= 4 else {
+            throw .invalidEncoding("invalid RSA public exponent")
+        }
         // PKCS#1 RSAPublicKey ::= SEQUENCE { modulus INTEGER, publicExponent INTEGER }
         let der = DER.sequence(DER.integer(n) + DER.integer(e))
         guard Self.secKey(der) != nil else { throw .invalidEncoding("invalid RSA public key") }
@@ -179,9 +184,10 @@ enum Field25519 {
 
     static func montgomeryU(fromEdwardsY encoded: Data) -> Data? {
         var bytes = [UInt8](encoded)
+        let xNegative = bytes[31] & 0x80 != 0
         bytes[31] &= 0x7F  // drop the sign of x
         let y = (0..<4).map { i in (0..<8).reduce(UInt64(0)) { $0 | UInt64(bytes[i * 8 + $1]) << UInt64(8 * $1) } }
-        guard less(y, p) else { return nil }
+        guard less(y, p), isOnCurve(y: y, xNegative: xNegative) else { return nil }
         let one: Element = [1, 0, 0, 0]
         let denominator = sub(one, y)
         guard denominator != [0, 0, 0, 0] else { return nil }  // y = 1 is the identity
@@ -267,12 +273,36 @@ enum Field25519 {
 
     /// a^(p-2) by square-and-multiply.
     static func invert(_ a: Element) -> Element {
-        let exponent = subRaw(p, [2, 0, 0, 0])
+        pow(a, subRaw(p, [2, 0, 0, 0]))
+    }
+
+    static func pow(_ a: Element, _ exponent: Element) -> Element {
         var result: Element = [1, 0, 0, 0]
         for i in (0..<256).reversed() {
             result = mul(result, result)
             if exponent[i / 64] >> UInt64(i % 64) & 1 == 1 { result = mul(result, a) }
         }
         return result
+    }
+
+    /// Whether some x satisfies -x² + y² = 1 + d·x²·y², i.e. x² = (y² - 1) / (d·y² + 1) is a
+    /// square (Euler's criterion), as Ed25519 point decoding requires. x = 0 must not be
+    /// encoded with the sign bit set.
+    static func isOnCurve(y: Element, xNegative: Bool) -> Bool {
+        let one: Element = [1, 0, 0, 0]
+        // d = -121665 / 121666
+        let d = mul(sub([0, 0, 0, 0], [121_665, 0, 0, 0]), invert([121_666, 0, 0, 0]))
+        let y2 = mul(y, y)
+        let denominator = add(mul(d, y2), one)
+        guard denominator != [0, 0, 0, 0] else { return false }
+        let x2 = mul(sub(y2, one), invert(denominator))
+        if x2 == [0, 0, 0, 0] { return !xNegative }
+        // (p - 1) / 2
+        let half = shiftRight(subRaw(p, one))
+        return pow(x2, half) == one
+    }
+
+    static func shiftRight(_ a: Element) -> Element {
+        (0..<4).map { i in a[i] >> 1 | (i < 3 ? a[i + 1] << 63 : 0) }
     }
 }

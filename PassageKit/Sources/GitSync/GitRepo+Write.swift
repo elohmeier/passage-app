@@ -126,9 +126,11 @@ extension GitRepo {
 
     /// Fetches, integrates remote changes (fast-forward, or a merge that keeps both sides of
     /// conflicting files), and pushes local commits. Retries once if the push races another
-    /// device.
+    /// device. Conflicting `.age-recipients` stop the sync with `.recipientsConflict` unless
+    /// `acceptRemoteRecipients`, which resolves them like other files.
     public func sync(
-        credentials: GitCredentials, knownHosts: KnownHosts = KnownHosts(), author: Signature, date: Date = .now
+        credentials: GitCredentials, knownHosts: KnownHosts = KnownHosts(), author: Signature, date: Date = .now,
+        acceptRemoteRecipients: Bool = false
     ) throws(GitError) -> SyncResult {
         var result = SyncResult()
         for attempt in 0..<2 {
@@ -153,7 +155,7 @@ extension GitRepo {
                 if ahead == 0 {
                     try fastForward(to: upstream)
                 } else {
-                    result.conflictCopies += try merge(upstream, author: author, date: date)
+                    result.conflictCopies += try merge(upstream, author: author, date: date, checkRecipients: !acceptRemoteRecipients)
                 }
                 result.pulled = true
             }
@@ -183,7 +185,8 @@ extension GitRepo {
     /// Merges `upstream` into HEAD. Conflicting files keep the upstream version at their path
     /// and our version as a sibling "conflict" copy; a file deleted on one side and changed on
     /// the other keeps the changed version. Returns the conflict copies' paths.
-    func merge(_ upstream: git_oid, author: Signature, date: Date) throws(GitError) -> [String] {
+    func merge(_ upstream: git_oid, author: Signature, date: Date, checkRecipients: Bool = true) throws(GitError) -> [String] {
+        if checkRecipients { try checkRecipientsMerge(upstream) }
         var annotated: OpaquePointer?
         var target = upstream
         try check(git_annotated_commit_lookup(&annotated, repo, &target))
@@ -230,6 +233,24 @@ extension GitRepo {
             : "Merge remote changes\n\nConflicting edits kept as:\n" + copies.map { "- \($0)" }.joined(separator: "\n")
         _ = try commit(tree: tree, parents: [try oid("HEAD"), upstream], message: message, author: author, date: date)
         return copies
+    }
+
+    /// Merges in memory first: a conflict in a `.age-recipients` stops the sync before the
+    /// working tree is touched.
+    private func checkRecipientsMerge(_ upstream: git_oid) throws(GitError) {
+        var ours = try oid("HEAD"), theirs = upstream
+        var ourCommit: OpaquePointer?, theirCommit: OpaquePointer?
+        try check(git_commit_lookup(&ourCommit, repo, &ours))
+        defer { git_commit_free(ourCommit) }
+        try check(git_commit_lookup(&theirCommit, repo, &theirs))
+        defer { git_commit_free(theirCommit) }
+        var index: OpaquePointer?
+        try check(git_merge_commits(&index, repo, ourCommit, theirCommit, nil))
+        defer { git_index_free(index) }
+        guard git_index_has_conflicts(index) == 1 else { return }
+        if let path = try conflicts(in: index).map(\.path).first(where: { ($0 as NSString).lastPathComponent == ".age-recipients" }) {
+            throw GitError(kind: .recipientsConflict, message: path)
+        }
     }
 
     struct Conflict {

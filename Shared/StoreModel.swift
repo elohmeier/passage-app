@@ -51,6 +51,16 @@ struct GitStoreConfig: Codable, Equatable {
 }
 
 /// The open password store: a folder picked in the Files app, or a git clone.
+enum StoreModelError: LocalizedError {
+    case recipientsNeedReview
+
+    var errorDescription: String? {
+        switch self {
+        case .recipientsNeedReview: "The store's recipients changed. Review the change in Passage before saving new entries."
+        }
+    }
+}
+
 @MainActor @Observable
 final class StoreModel {
     private(set) var store: LocalStore?
@@ -75,6 +85,7 @@ final class StoreModel {
     private static let gitPasswordKey = "git.password"
     private static let sshKeyKey = "ssh.key"
     private static let knownHostsKey = "knownHosts"
+    private static let approvedRecipientsKey = "approvedRecipients"
 
     /// Trusted SSH host keys, beyond the pinned ones.
     private(set) var knownHosts: KnownHosts
@@ -307,6 +318,7 @@ final class StoreModel {
                 present: Set(device.recipients), comment: "\(name) (Passage, \(f.string(from: .now)))"
             ) { device.recommendedRecipient(alongside: $0) }
             guard !changed.isEmpty else { return }
+            await approveRecipients()
             await commitLocked("Add \(name) (Passage) as recipient.")
         }
     }
@@ -326,7 +338,52 @@ final class StoreModel {
             recovery: recovery)
         return try await withWriteLock {
             try await store.setUp(files: files)
+            await approveRecipients()
             return await commitLocked("Set up password store with Passage.")
+        }
+    }
+
+    // MARK: Recipient changes
+
+    /// `.age-recipients` changes since the user last approved them (pulled, or written by
+    /// another device into a shared folder). New entries aren't encrypted until reviewed, so a
+    /// recipient slipped into the remote doesn't silently receive new secrets.
+    private(set) var recipientChanges: [RecipientSet.Change] = []
+    /// The last sync stopped because both sides changed a `.age-recipients`.
+    private(set) var recipientsConflict = false
+
+    private func reviewRecipients() async {
+        guard let store, let current = try? await store.recipientSet() else { return }
+        guard let data = defaults.data(forKey: Self.approvedRecipientsKey),
+            let approved = try? JSONDecoder().decode(RecipientSet.self, from: data)
+        else {
+            // First look at this store: what it has now is what the user chose to open.
+            defaults.set(try? JSONEncoder().encode(current.set), forKey: Self.approvedRecipientsKey)
+            recipientChanges = []
+            return
+        }
+        recipientChanges = current.set.changes(since: approved, labels: current.labels)
+    }
+
+    /// Accepts the current recipients, e.g. after reviewing `recipientChanges`.
+    func approveRecipients() async {
+        guard let store, let current = try? await store.recipientSet() else { return }
+        defaults.set(try? JSONEncoder().encode(current.set), forKey: Self.approvedRecipientsKey)
+        recipientChanges = []
+    }
+
+    private func requireApprovedRecipients() async throws {
+        await reviewRecipients()
+        if !recipientChanges.isEmpty { throw StoreModelError.recipientsNeedReview }
+    }
+
+    /// Resolves `recipientsConflict` by keeping the remote's `.age-recipients` (ours is saved
+    /// as a conflict copy). The resulting change still goes through recipient review.
+    func syncKeepingRemoteRecipients() async {
+        do {
+            try await withWriteLock { await syncLocked(.user, acceptRemoteRecipients: true) }
+        } catch {
+            syncProblem = error.localizedDescription
         }
     }
 
@@ -370,7 +427,7 @@ final class StoreModel {
     }
 
     /// The sync itself; callers hold the write lock.
-    private func syncLocked(_ trigger: SyncTrigger) async {
+    private func syncLocked(_ trigger: SyncTrigger, acceptRemoteRecipients: Bool = false) async {
         guard let git, let gitConfig else { return }
         isSyncing = true
         let endBackgroundTask = Self.beginBackgroundTask?()
@@ -381,7 +438,9 @@ final class StoreModel {
         let credentials = storedCredentials(for: gitConfig)
         for attempt in 0..<2 {
             do {
-                let result = try await git.sync(credentials: credentials, knownHosts: knownHosts, author: Self.author)
+                let result = try await git.sync(
+                    credentials: credentials, knownHosts: knownHosts, author: Self.author, acceptRemoteRecipients: acceptRemoteRecipients)
+                recipientsConflict = false
                 if !result.conflictCopies.isEmpty { conflictCopies = result.conflictCopies }
                 lastCommit = try? await git.headCommit()
                 lastSynced = .now
@@ -393,6 +452,7 @@ final class StoreModel {
                 continue
             } catch {
                 syncProblem = error.localizedDescription
+                recipientsConflict = error.kind == .recipientsConflict
                 // Automatic syncs report quietly; things the user asked for get an alert,
                 // except plain connectivity problems, which the inline status covers.
                 if trigger == .user, !error.isTransient {
@@ -430,6 +490,7 @@ final class StoreModel {
     @discardableResult
     func save(_ entry: EntryPath, text: String, isNew: Bool, message: String? = nil) async throws -> Bool {
         guard let store else { throw StoreError.accessDenied }
+        try await requireApprovedRecipients()
         return try await withWriteLock {
             try await store.save(entry, plaintext: Data(text.utf8))
             return await commitLocked(
@@ -441,6 +502,7 @@ final class StoreModel {
     @discardableResult
     func importEntries(_ entries: [(path: EntryPath, text: String)], message: String) async throws -> Bool {
         guard let store else { throw StoreError.accessDenied }
+        try await requireApprovedRecipients()
         return try await withWriteLock {
             for entry in entries {
                 try await store.save(entry.path, plaintext: Data(entry.text.utf8))
@@ -452,6 +514,7 @@ final class StoreModel {
     /// Saves edited content under a new name and removes the old one, as one commit.
     func rename(_ from: EntryPath, to: EntryPath, text: String) async throws {
         guard let store else { throw StoreError.accessDenied }
+        try await requireApprovedRecipients()
         try await withWriteLock {
             try await store.save(to, plaintext: Data(text.utf8))
             try await store.delete(from)
@@ -469,6 +532,7 @@ final class StoreModel {
 
     func move(_ from: EntryPath, to: EntryPath, decrypt: @escaping @Sendable (Data) async throws -> Data) async throws {
         guard let store else { throw StoreError.accessDenied }
+        try await requireApprovedRecipients()
         try await withWriteLock {
             try await store.move(from, to: to, decrypt: decrypt)
             await commitLocked("Rename \(from.path) to \(to.path).")
@@ -575,6 +639,9 @@ final class StoreModel {
         lastSynced = nil
         snapshot = .empty
         needsSetup = false
+        recipientChanges = []
+        recipientsConflict = false
+        defaults.removeObject(forKey: Self.approvedRecipientsKey)
         if updatesAutoFill { Task { await AutoFillStore.clear() } }
         defaults.removeObject(forKey: Self.bookmarkKey)
         defaults.removeObject(forKey: Self.gitConfigKey)
@@ -590,6 +657,7 @@ final class StoreModel {
             errorMessage = error.localizedDescription
         }
         needsSetup = snapshot.entries.isEmpty && NewStore.isEmpty(at: store.root)
+        await reviewRecipients()
         if updatesAutoFill { await AutoFillStore.update(entries: snapshot.entries) }
         await updateReadability()
     }
