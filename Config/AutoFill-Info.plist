@@ -12,8 +12,6 @@
 				<true/>
 				<key>ProvidesPasskeys</key>
 				<true/>
-				<key>SupportsCredentialUpdate</key>
-				<true/>
 				<key>SupportsCredentialExchange</key>
 				<true/>
 				<key>SupportedCredentialExchangeVersions</key>

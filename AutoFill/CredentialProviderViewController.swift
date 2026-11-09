@@ -29,6 +29,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     override func prepareCredentialList(
         for serviceIdentifiers: [ASCredentialServiceIdentifier], requestParameters: ASPasskeyCredentialRequestParameters
     ) {
+        log.info("prepareCredentialList (passkey)")
         let request = PasskeyRequest(
             relyingParty: requestParameters.relyingPartyIdentifier, clientDataHash: requestParameters.clientDataHash,
             allowedCredentials: requestParameters.allowedCredentials)
@@ -38,6 +39,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     /// A site wants to create a passkey: generate it, save it to the store (commit and push), and
     /// return the attestation.
     override func prepareInterface(forPasskeyRegistration registrationRequest: any ASCredentialRequest) {
+        log.info("prepareInterface(forPasskeyRegistration:)")
         guard let request = registrationRequest as? ASPasskeyCredentialRequest,
             let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity
         else {
@@ -70,14 +72,20 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     // MARK: Signal API (iOS 26): websites report changes to their passkeys
+    //
+    // Disabled: `SupportsCredentialUpdate` is off in AutoFill-Info.plist. iOS delivers these
+    // reports to every provider after sign-ins (also ones filled by Apple Passwords), and
+    // starting the extension for them flashed an empty sheet in Safari.
 
     override func reportUnknownPublicKeyCredential(forRelyingParty relyingParty: String, credentialID: Data) {
+        log.info("reportUnknownPublicKeyCredential")
         Task { await AutoFillStore.report { $0.markUnknown(relyingParty: relyingParty, credentialID: credentialID) } }
     }
 
     override func reportAllAcceptedPublicKeyCredentials(
         forRelyingParty relyingParty: String, userHandle: Data, acceptedCredentialIDs: [Data]
     ) {
+        log.info("reportAllAcceptedPublicKeyCredentials")
         Task {
             await AutoFillStore.report {
                 $0.markAccepted(relyingParty: relyingParty, userHandle: userHandle, accepted: acceptedCredentialIDs)
@@ -86,14 +94,22 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     override func reportPublicKeyCredentialUpdate(forRelyingParty relyingParty: String, userHandle: Data, newName: String) {
+        log.info("reportPublicKeyCredentialUpdate")
         Task { await AutoFillStore.report { $0.rename(relyingParty: relyingParty, userHandle: userHandle, to: newName) } }
     }
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        log.info("viewDidLoad")
+    }
+
     override func prepareOneTimeCodeCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
+        log.info("prepareOneTimeCodeCredentialList")
         show(.oneTimeCode, services: serviceIdentifiers)
     }
 
     override func prepareInterfaceForUserChoosingTextToInsert() {
+        log.info("prepareInterfaceForUserChoosingTextToInsert")
         show(.text, services: [])
     }
 
