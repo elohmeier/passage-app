@@ -33,11 +33,21 @@ extension GitRepo {
 
         var tree = git_oid()
         try check(git_index_write_tree(&tree, index))
+        guard !isEmpty else {
+            // The first commit of an empty repository. Name its branch main, whatever the
+            // clone's default was.
+            if git_index_entrycount(index) == 0 { return nil }
+            try check(git_repository_set_head(repo, "refs/heads/main"))
+            return try commit(tree: tree, parents: [], message: message, author: author, date: date)
+        }
         let head = try oid("HEAD")
         var headTree = try treeID(of: head)
         if git_oid_equal(&headTree, &tree) == 1 { return nil }
         return try commit(tree: tree, parents: [head], message: message, author: author, date: date)
     }
+
+    /// True for a repository without commits, e.g. a clone of a freshly created GitHub repo.
+    public var isEmpty: Bool { git_repository_head_unborn(repo) == 1 }
 
     // MARK: Pushing
 
@@ -70,6 +80,46 @@ extension GitRepo {
         if let rejection = ctx.pushRejection {
             throw GitError(kind: .pushRejected, message: rejection)
         }
+        try trackOrigin(branch)
+    }
+
+    /// Sets `origin/<branch>` as the upstream of a branch that has none yet (after its first
+    /// push, which creates the remote-tracking ref).
+    private func trackOrigin(_ branch: String) throws(GitError) {
+        var local: OpaquePointer?
+        try check(git_branch_lookup(&local, repo, branch, GIT_BRANCH_LOCAL))
+        defer { git_reference_free(local) }
+        var upstream: OpaquePointer?
+        if git_branch_upstream(&upstream, local) == 0 {
+            git_reference_free(upstream)
+            return
+        }
+        try check(git_branch_set_upstream(local, "origin/\(branch)"))
+    }
+
+    /// For an empty clone: if another device has pushed the first commit since, check it out
+    /// and track it. Returns false if the remote is still empty.
+    private func adoptRemoteBranch() throws(GitError) -> Bool {
+        var remoteRef: OpaquePointer?
+        guard git_reference_lookup(&remoteRef, repo, "refs/remotes/origin/main") == 0
+            || git_reference_lookup(&remoteRef, repo, "refs/remotes/origin/master") == 0
+        else { return false }
+        defer { git_reference_free(remoteRef) }
+        let name = String(cString: git_reference_shorthand(remoteRef)).replacing("origin/", with: "", maxReplacements: 1)
+        var target = git_reference_target(remoteRef)!.pointee
+        var commit: OpaquePointer?
+        try check(git_commit_lookup(&commit, repo, &target))
+        defer { git_commit_free(commit) }
+        var checkout = git_checkout_options()
+        try check(git_checkout_options_init(&checkout, UInt32(GIT_CHECKOUT_OPTIONS_VERSION)))
+        checkout.checkout_strategy = GIT_CHECKOUT_SAFE.rawValue
+        try check(git_checkout_tree(repo, commit, &checkout))
+        var branch: OpaquePointer?
+        try check(git_branch_create(&branch, repo, name, commit, 0))
+        git_reference_free(branch)
+        try check(git_repository_set_head(repo, "refs/heads/\(name)"))
+        try trackOrigin(name)
+        return true
     }
 
     // MARK: Syncing
@@ -83,6 +133,11 @@ extension GitRepo {
         var result = SyncResult()
         for attempt in 0..<2 {
             try fetch(credentials: credentials, knownHosts: knownHosts)
+            if isEmpty {
+                // Nothing committed here yet: take the remote's first commit, if any.
+                result.pulled = try adoptRemoteBranch()
+                return result
+            }
             let local = try oid("HEAD")
             guard let upstream = try upstreamID() else {
                 // A brand-new branch: nothing to pull, just publish it.
@@ -232,6 +287,7 @@ extension GitRepo {
     }
 
     func upstreamID() throws(GitError) -> git_oid? {
+        if isEmpty { return nil }
         var head: OpaquePointer?
         try check(git_repository_head(&head, repo))
         defer { git_reference_free(head) }

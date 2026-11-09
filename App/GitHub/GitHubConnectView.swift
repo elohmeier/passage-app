@@ -138,8 +138,11 @@ struct GitHubConnectView: View {
                     Link(destination: model.installURL) {
                         Label("Add a Repository on GitHub", systemImage: "plus.circle")
                     }
+                    Link(destination: URL(string: "https://github.com/new?name=password-store&visibility=private")!) {
+                        Label("Create a New Private Repository", systemImage: "folder.badge.plus")
+                    }
                 } footer: {
-                    Text("Missing a repository? Add it to the Passage app's installation on GitHub. The list updates when you come back.")
+                    Text("Missing a repository? Add it to the Passage app's installation on GitHub. The list updates when you come back. Starting fresh? Create an empty private repository, add it, and Passage sets it up as a new store.")
                 }
             }
             .refreshable { await model.loadRepositories() }

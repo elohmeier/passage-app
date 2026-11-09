@@ -6,6 +6,7 @@ public enum StoreError: Error, LocalizedError, Equatable {
     case downloadTimedOut(String)
     case accessDenied
     case invalidRecipients(file: String, message: String)
+    case alreadySetUp
 
     public var errorDescription: String? {
         switch self {
@@ -13,6 +14,7 @@ public enum StoreError: Error, LocalizedError, Equatable {
         case .downloadTimedOut(let p): "“\(p)” couldn't be downloaded from iCloud. Check your connection and try again."
         case .accessDenied: "Passage no longer has access to the store folder. Choose it again."
         case .invalidRecipients(let file, let message): "\(file) is invalid: \(message)"
+        case .alreadySetUp: "This store already has recipients or entries."
         }
     }
 }

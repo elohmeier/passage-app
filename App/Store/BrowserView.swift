@@ -127,6 +127,11 @@ struct FolderView: View {
     /// Non-empty: show search results across the store instead of the folder.
     var query: String = ""
     @State private var creating: EntryEditorView.Mode?
+    #if DEBUG
+        @State private var settingUp = UserDefaults.standard.bool(forKey: "PassageDebugSetUpSheet")
+    #else
+        @State private var settingUp = false
+    #endif
 
     var body: some View {
         let contents = store.snapshot.contents(of: folder)
@@ -137,6 +142,7 @@ struct FolderView: View {
             } else {
                 if folder.isEmpty {
                     SyncStatusSection()
+                    SetUpStoreSection(settingUp: $settingUp)
                     RecipientStatusSection()
                 }
                 ForEach(contents.folders, id: \.self) { f in
@@ -152,7 +158,7 @@ struct FolderView: View {
         .overlay {
             if !query.isEmpty {
                 if results.isEmpty { ContentUnavailableView.search(text: query) }
-            } else if contents.folders.isEmpty && contents.entries.isEmpty && !store.isLoading {
+            } else if contents.folders.isEmpty && contents.entries.isEmpty && !store.isLoading && !(folder.isEmpty && store.needsSetup) {
                 ContentUnavailableView(
                     "No Passwords", systemImage: "tray",
                     description: Text("This folder contains no .age files."))
@@ -163,9 +169,11 @@ struct FolderView: View {
         .toolbar {
             ToolbarItem(placement: .bottomBar) {
                 Button("New Password", systemImage: "plus") { creating = .new(folder: folder) }
+                    .disabled(store.needsSetup)
             }
         }
         .sheet(item: $creating) { EntryEditorView(mode: $0) }
+        .sheet(isPresented: $settingUp) { SetUpStoreView() }
     }
 }
 

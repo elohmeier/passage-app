@@ -79,6 +79,18 @@ struct PassageApp: App {
                                 }
                             }
                         }
+                        // `-PassageDebugSetUp YES` sets up an empty store with a throwaway recovery key.
+                        if UserDefaults.standard.bool(forKey: "PassageDebugSetUp") {
+                            Task {
+                                try? await Task.sleep(for: .seconds(2))
+                                guard store.needsSetup, let device = model.deviceIdentity else { return print("SETUP_SKIPPED") }
+                                do {
+                                    try await store.setUpNewStore(device: device, recovery: RecoveryKit(postQuantum: true))
+                                } catch {
+                                    store.errorMessage = error.localizedDescription
+                                }
+                            }
+                        }
                         // `-PassageClone <url>` clones a repository on launch.
                         if let remote = UserDefaults.standard.string(forKey: "PassageClone"), store.gitConfig?.remote != remote {
                             Task {

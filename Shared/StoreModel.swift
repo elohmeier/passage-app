@@ -311,6 +311,25 @@ final class StoreModel {
         }
     }
 
+    /// True for a store without recipients or entries, e.g. a new GitHub repository: the app
+    /// offers to set it up.
+    private(set) var needsSetup = false
+
+    /// Writes `.age-recipients` (this device and the recovery key) and a README, then commits
+    /// and pushes. Returns true if the commit reached the remote.
+    @discardableResult
+    func setUpNewStore(device: StoredIdentity, recovery: RecoveryKit) async throws -> Bool {
+        guard let store else { throw StoreError.accessDenied }
+        let recoveryRecipient = try RecipientParser.parse(recovery.recipient)
+        let files = NewStore.files(
+            deviceRecipient: device.recommendedRecipient(alongside: [recoveryRecipient]), deviceName: UIDevice.current.name,
+            recovery: recovery)
+        return try await withWriteLock {
+            try await store.setUp(files: files)
+            return await commitLocked("Set up password store with Passage.")
+        }
+    }
+
     /// Set after a sync that had to keep both sides of conflicting edits.
     var conflictCopies: [String] = []
 
@@ -555,6 +574,7 @@ final class StoreModel {
         syncProblem = nil
         lastSynced = nil
         snapshot = .empty
+        needsSetup = false
         if updatesAutoFill { Task { await AutoFillStore.clear() } }
         defaults.removeObject(forKey: Self.bookmarkKey)
         defaults.removeObject(forKey: Self.gitConfigKey)
@@ -569,6 +589,7 @@ final class StoreModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+        needsSetup = snapshot.entries.isEmpty && NewStore.isEmpty(at: store.root)
         if updatesAutoFill { await AutoFillStore.update(entries: snapshot.entries) }
         await updateReadability()
     }

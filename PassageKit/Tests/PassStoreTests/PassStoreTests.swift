@@ -539,3 +539,47 @@ import Testing
         #expect(index.items.allSatisfy { $0.passkey?.userName == "new name" })
     }
 }
+
+@Suite struct NewStoreTests {
+    @Test(arguments: [true, false]) func recoveryKitDecryptsTheNewStore(postQuantum: Bool) throws {
+        let device = postQuantum ? try HybridIdentity().recipient.encoded : X25519Identity().recipient.encoded
+        let kit = try RecoveryKit(postQuantum: postQuantum)
+        #expect(kit.isPostQuantum == postQuantum)
+        let files = NewStore.files(deviceRecipient: device, deviceName: "iPhone", recovery: kit)
+        #expect(files.map(\.path) == [".age-recipients", "README.md"])
+
+        let recipients = try RecipientParser.parseFile(files[0].contents)
+        #expect(recipients.map(\.encoded) == [device, kit.recipient])
+        let ciphertext = try Age.encrypt(Data("secret".utf8), to: recipients)
+        // The kit file is a plain age identity file.
+        let identities = try IdentityParser.parseFile(kit.file(store: "elohmeier/passwords"))
+        #expect(try Age.decrypt(ciphertext, identities: identities) == Data("secret".utf8))
+        #expect(kit.identity.hasSuffix(kit.confirmationSuffix) && kit.confirmationSuffix.count == 6)
+    }
+
+    @Test func emptiness() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "new-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root.appending(path: ".git"), withIntermediateDirectories: true)
+        try Data("# hello".utf8).write(to: root.appending(path: "README.md"))
+        try Data().write(to: root.appending(path: ".git/x.age"))
+        #expect(NewStore.isEmpty(at: root))
+        try FileManager.default.createDirectory(at: root.appending(path: "a"), withIntermediateDirectories: true)
+        try Data().write(to: root.appending(path: "a/b.age"))
+        #expect(!NewStore.isEmpty(at: root))
+    }
+}
+
+extension NewStoreTests {
+    @Test func setUpWritesOnceAndKeepsReadme() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "new-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("# mine".utf8).write(to: root.appending(path: "README.md"))
+        let kit = try RecoveryKit(postQuantum: false)
+        let files = NewStore.files(deviceRecipient: X25519Identity().recipient.encoded, deviceName: "iPhone", recovery: kit)
+        let store = LocalStore(root: root)
+        try await store.setUp(files: files)
+        #expect(try String(contentsOf: root.appending(path: "README.md"), encoding: .utf8) == "# mine")
+        #expect(try await store.recipients(for: EntryPath("x")).count == 2)
+        await #expect(throws: StoreError.alreadySetUp) { try await store.setUp(files: files) }
+    }
+}

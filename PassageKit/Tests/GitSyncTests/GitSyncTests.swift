@@ -33,7 +33,10 @@ struct Fixture {
     func push() throws { try git(["push", "-q", "origin", "main"], in: work) }
 
     @discardableResult
-    func git(_ args: [String], in cwd: URL? = nil) throws -> String {
+    func git(_ args: [String], in cwd: URL? = nil) throws -> String { try Self.git(args, in: cwd) }
+
+    @discardableResult
+    static func git(_ args: [String], in cwd: URL? = nil) throws -> String {
         let p = Process()
         p.executableURL = URL(filePath: "/usr/bin/git")
         p.arguments = (cwd.map { ["-C", $0.path] } ?? []) + args
@@ -378,5 +381,60 @@ enum Socket {
             }
         }.start()
         return (Int(UInt16(bigEndian: addr.sin_port)), fd)
+    }
+}
+
+@Suite struct EmptyRepoTests {
+    let dir = FileManager.default.temporaryDirectory.appending(path: "gitsync-empty-\(UUID().uuidString)", directoryHint: .isDirectory)
+    let phone = GitRepo.Signature(name: "Passage on iPhone", email: "passage@iphone.invalid")
+    var origin: URL { dir.appending(path: "origin.git") }
+    var clone: URL { dir.appending(path: "clone") }
+
+    init() throws {
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // Like a new GitHub repo: no commits, and a default branch other than ours.
+        try Fixture.git(["init", "-q", "--bare", "-b", "trunk", origin.path])
+    }
+
+    @Test func firstCommitAndPushCreateMain() async throws {
+        let repo = try await GitRepo.clone(remote: origin.path, into: clone)
+        #expect(await repo.isEmpty)
+        #expect(try await repo.commitAll(message: "nothing", author: phone) == nil)
+        #expect(try await repo.sync(credentials: .none, author: phone) == GitRepo.SyncResult())
+
+        try Data("age1…\n".utf8).write(to: clone.appending(path: ".age-recipients"))
+        #expect(try await repo.commitAll(message: "Set up store", author: phone) != nil)
+        #expect(await !repo.isEmpty)
+        #expect(await repo.branch == "main")
+        #expect(try await repo.sync(credentials: .none, author: phone).pushed)
+        #expect(try Fixture.git(["-C", origin.path, "log", "--format=%s", "main"]) == "Set up store\n")
+
+        // Tracking is set up: a later desktop change comes back with a plain sync.
+        let desktop = dir.appending(path: "desktop")
+        try Fixture.git(["clone", "-q", "-b", "main", origin.path, desktop.path])
+        try Data("x".utf8).write(to: desktop.appending(path: "bank.age"))
+        try Fixture.git(["-C", desktop.path, "add", "."])
+        try Fixture.git(["-C", desktop.path, "-c", "user.name=D", "-c", "user.email=d@example.com", "commit", "-q", "-m", "bank"])
+        try Fixture.git(["-C", desktop.path, "push", "-q"])
+        #expect(try await repo.sync(credentials: .none, author: phone).pulled)
+        #expect(FileManager.default.fileExists(atPath: clone.appending(path: "bank.age").path))
+    }
+
+    @Test func emptyCloneAdoptsAnotherDevicesFirstCommit() async throws {
+        let repo = try await GitRepo.clone(remote: origin.path, into: clone)
+        let desktop = dir.appending(path: "desktop")
+        try Fixture.git(["clone", "-q", origin.path, desktop.path])
+        try Fixture.git(["-C", desktop.path, "checkout", "-q", "-b", "main"])
+        try Data("x".utf8).write(to: desktop.appending(path: "bank.age"))
+        try Fixture.git(["-C", desktop.path, "add", "."])
+        try Fixture.git(["-C", desktop.path, "-c", "user.name=D", "-c", "user.email=d@example.com", "commit", "-q", "-m", "bank"])
+        try Fixture.git(["-C", desktop.path, "push", "-q", "origin", "main"])
+
+        #expect(try await repo.sync(credentials: .none, author: phone).pulled)
+        #expect(await repo.branch == "main")
+        #expect(FileManager.default.fileExists(atPath: clone.appending(path: "bank.age").path))
+        try Data("y".utf8).write(to: clone.appending(path: "phone.age"))
+        try await repo.commitAll(message: "phone", author: phone)
+        #expect(try await repo.sync(credentials: .none, author: phone).pushed)
     }
 }
